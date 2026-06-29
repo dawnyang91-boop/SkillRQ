@@ -1,0 +1,10 @@
+{
+  "avg_tool_calls_per_trajectory": 1.9315589353612168,
+  "avg_unique_capabilities_per_query": 1.8745247148288973,
+  "capability_count": 101,
+  "dataset": "api_bank",
+  "multi_capability_query_ratio": 0.6197718631178707,
+  "query_count": 263,
+  "unique_capabilities_ge_3_ratio": 0.21673003802281368,
+  "unique_capabilities_ge_5_ratio": 0.0
+}

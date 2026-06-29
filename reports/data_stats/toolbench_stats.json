@@ -1,0 +1,10 @@
+{
+  "avg_tool_calls_per_trajectory": 1.3558273267711516,
+  "avg_unique_capabilities_per_query": 2.4683995117833875,
+  "capability_count": 64544,
+  "dataset": "toolbench",
+  "multi_capability_query_ratio": 0.917522361413885,
+  "query_count": 329362,
+  "unique_capabilities_ge_3_ratio": 0.37927265440457614,
+  "unique_capabilities_ge_5_ratio": 0.03752102549778056
+}

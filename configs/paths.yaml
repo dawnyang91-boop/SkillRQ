@@ -1,0 +1,9 @@
+raw_root: /Users/sihan/code/skill-rec/data/raw
+project_data_root: data
+processed_root: data/processed
+index_root: data/indexes
+cache_root: data/cache
+run_root: runs
+report_root: reports
+capability_raw_root: data/raw
+capability_processed_root: data/processed/capability

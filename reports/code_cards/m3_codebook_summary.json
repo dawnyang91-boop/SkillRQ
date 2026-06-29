@@ -1,0 +1,73 @@
+{
+  "capability_assignments": 64645,
+  "capability_quality_path": "/Users/sihan/code/SkillRQ/data/processed/capability/code_quality.json",
+  "code_card_paths": [
+    "/Users/sihan/code/SkillRQ/reports/code_cards/toolbench_code_cards.md",
+    "/Users/sihan/code/SkillRQ/reports/code_cards/api_bank_code_cards.md",
+    "/Users/sihan/code/SkillRQ/reports/code_cards/skillret_code_cards.md"
+  ],
+  "datasets": [
+    "toolbench",
+    "api_bank",
+    "skillret",
+    "skillrouter"
+  ],
+  "limit_per_dataset": null,
+  "quality": {
+    "by_dataset": {
+      "api_bank": {
+        "assignment_count": 101,
+        "category_alignment": 1.0,
+        "code_collapse_rate": 0.009900990099009901,
+        "code_purity": 1.0,
+        "code_usage_entropy": 0.9999999999999992,
+        "role_alignment": 1.0,
+        "unique_l1_codes": 10,
+        "unique_semantic_code_paths": 101
+      },
+      "skillret": {
+        "assignment_count": 16783,
+        "category_alignment": 1.0,
+        "code_collapse_rate": 0.02067568372758148,
+        "code_purity": 0.32836799141988915,
+        "code_usage_entropy": 0.8390064840279006,
+        "role_alignment": 1.0,
+        "unique_l1_codes": 13,
+        "unique_semantic_code_paths": 2567
+      },
+      "skillrouter": {
+        "assignment_count": 79141,
+        "category_alignment": 1.0,
+        "code_collapse_rate": 0.001288838907772204,
+        "code_purity": 0.8908024917552217,
+        "code_usage_entropy": 0.9922055418846366,
+        "role_alignment": 1.0,
+        "unique_l1_codes": 54,
+        "unique_semantic_code_paths": 69791
+      },
+      "toolbench": {
+        "assignment_count": 64544,
+        "category_alignment": 1.0,
+        "code_collapse_rate": 0.0037803668815071887,
+        "code_purity": 0.7484041893901835,
+        "code_usage_entropy": 0.981484582720151,
+        "role_alignment": 1.0,
+        "unique_l1_codes": 51,
+        "unique_semantic_code_paths": 52382
+      }
+    },
+    "overall": {
+      "assignment_count": 160569,
+      "category_alignment": 1.0,
+      "code_collapse_rate": 0.0021610647136122165,
+      "code_purity": 0.767545416612173,
+      "code_usage_entropy": 0.970490451182652,
+      "role_alignment": 1.0,
+      "unique_l1_codes": 127,
+      "unique_semantic_code_paths": 124841
+    }
+  },
+  "skill_assignments": 95924,
+  "skill_quality_path": "/Users/sihan/code/SkillRQ/data/processed/skill/code_quality.json",
+  "total_assignments": 160569
+}

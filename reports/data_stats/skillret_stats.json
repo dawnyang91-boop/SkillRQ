@@ -1,0 +1,10 @@
+{
+  "avg_tool_calls_per_trajectory": 0.0,
+  "avg_unique_capabilities_per_query": 1.985715541490858,
+  "capability_count": 16783,
+  "dataset": "skillret",
+  "multi_capability_query_ratio": 0.6616414674167839,
+  "query_count": 68256,
+  "unique_capabilities_ge_3_ratio": 0.32407407407407407,
+  "unique_capabilities_ge_5_ratio": 0.0
+}
