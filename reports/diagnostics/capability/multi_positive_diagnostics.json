@@ -1,0 +1,48 @@
+{
+  "gold_count_distribution": {
+    "1": 26870,
+    "10": 15,
+    "2": 177384,
+    "3": 81684,
+    "4": 30911,
+    "5": 11419,
+    "6": 711,
+    "7": 120,
+    "8": 77,
+    "9": 16
+  },
+  "gold_semantic_path_count_distribution": {
+    "1": 30804,
+    "10": 12,
+    "2": 178451,
+    "3": 80373,
+    "4": 28784,
+    "5": 9995,
+    "6": 615,
+    "7": 108,
+    "8": 54,
+    "9": 11
+  },
+  "m4_data_root": "/root/autodl-tmp/data/processed/m4/capability",
+  "multi_code_path_query_ratio": 0.9064296931717734,
+  "multi_gold_query_ratio": 0.9183796213324747,
+  "queries": 329207,
+  "sequence_contains_all_gold_ratio": 1.0,
+  "sequence_length_distribution": {
+    "0": 202875,
+    "1": 11438,
+    "2": 27206,
+    "3": 18147,
+    "4": 20930,
+    "5": 48611
+  },
+  "sequence_query_ratio": 0.3837463966440568,
+  "source_distribution": {
+    "api_bank": 261,
+    "toolbench": 328946
+  },
+  "split_distribution": {
+    "test": 1100,
+    "train": 328107
+  }
+}

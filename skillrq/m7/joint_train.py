@@ -12,6 +12,7 @@ from .features import FEATURE_KEYS, ROLES, STAGES, feature_vector
 from .joint_model import LEVELS, build_joint_reranker_model
 from ..m4.swanlab_utils import SwanLabLogger
 from ..m4.torch_utils import require_torch
+from ..splits import is_eval_split
 from ..utils.io import read_jsonl, write_json
 
 
@@ -49,7 +50,7 @@ def train_joint_reranker(
     role_vocab = {role: index for index, role in enumerate(ROLES)}
     stage_vocab = {stage: index for index, stage in enumerate(STAGES)}
     train_rows = [row for row in rows if row.get("split") == "train"] or rows
-    dev_rows = [row for row in rows if row.get("split") in {"dev", "test"}][: max(batch_size * 4, 1)]
+    dev_rows = [row for row in rows if is_eval_split(row.get("split"))][: max(batch_size * 4, 1)]
     resolved_device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
     model = build_joint_reranker_model(
         vocab_size=len(vocab),

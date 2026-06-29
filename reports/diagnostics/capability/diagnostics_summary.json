@@ -1,0 +1,447 @@
+{
+  "candidate_pool": {
+    "candidate_pool_upper_bounds": {
+      "m4": {
+        "available": true,
+        "avg_candidate_pool_size": 100.0,
+        "avg_unique_candidate_pool_size": 100.0,
+        "evaluated_queries": 1100,
+        "full_pool_completeness": 0.038181818181818185,
+        "full_pool_recall": 0.09866666666666664,
+        "observed_completeness@10": 0.015454545454545455,
+        "observed_completeness@100": 0.038181818181818185,
+        "observed_completeness@20": 0.02090909090909091,
+        "observed_completeness@5": 0.011818181818181818,
+        "observed_completeness@50": 0.031818181818181815,
+        "observed_recall@10": 0.06754545454545455,
+        "observed_recall@100": 0.09866666666666664,
+        "observed_recall@20": 0.07518181818181817,
+        "observed_recall@5": 0.058606060606060634,
+        "observed_recall@50": 0.08896969696969691,
+        "oracle_completeness@10": 0.038181818181818185,
+        "oracle_completeness@100": 0.038181818181818185,
+        "oracle_completeness@20": 0.038181818181818185,
+        "oracle_completeness@5": 0.03727272727272727,
+        "oracle_completeness@50": 0.038181818181818185,
+        "oracle_recall@10": 0.09866666666666664,
+        "oracle_recall@100": 0.09866666666666664,
+        "oracle_recall@20": 0.09866666666666664,
+        "oracle_recall@5": 0.09851515151515149,
+        "oracle_recall@50": 0.09866666666666664,
+        "prediction_path": "/root/autodl-tmp/runs/m4_query_to_code/predictions/capability/predictions.jsonl"
+      },
+      "m5": {
+        "available": true,
+        "avg_candidate_pool_size": 117.67272727272727,
+        "avg_unique_candidate_pool_size": 117.67272727272727,
+        "evaluated_queries": 1100,
+        "full_pool_completeness": 0.02727272727272727,
+        "full_pool_recall": 0.09110606060606055,
+        "observed_completeness@10": 0.005454545454545455,
+        "observed_completeness@100": 0.02727272727272727,
+        "observed_completeness@20": 0.013636363636363636,
+        "observed_completeness@5": 0.004545454545454545,
+        "observed_completeness@50": 0.024545454545454544,
+        "observed_recall@10": 0.0646060606060606,
+        "observed_recall@100": 0.0900454545454545,
+        "observed_recall@20": 0.07595454545454546,
+        "observed_recall@5": 0.05703030303030308,
+        "observed_recall@50": 0.08610606060606057,
+        "oracle_completeness@10": 0.02727272727272727,
+        "oracle_completeness@100": 0.02727272727272727,
+        "oracle_completeness@20": 0.02727272727272727,
+        "oracle_completeness@5": 0.02727272727272727,
+        "oracle_completeness@50": 0.02727272727272727,
+        "oracle_recall@10": 0.09110606060606055,
+        "oracle_recall@100": 0.09110606060606055,
+        "oracle_recall@20": 0.09110606060606055,
+        "oracle_recall@5": 0.09110606060606055,
+        "oracle_recall@50": 0.09110606060606055,
+        "prediction_path": "/root/autodl-tmp/runs/m5_residual_selector/predictions/capability/predictions.jsonl"
+      },
+      "m7": {
+        "available": true,
+        "avg_candidate_pool_size": 98.21818181818182,
+        "avg_unique_candidate_pool_size": 98.21818181818182,
+        "evaluated_queries": 1100,
+        "full_pool_completeness": 0.02727272727272727,
+        "full_pool_recall": 0.08959090909090905,
+        "observed_completeness@10": 0.0036363636363636364,
+        "observed_completeness@100": 0.02727272727272727,
+        "observed_completeness@20": 0.013636363636363636,
+        "observed_completeness@5": 0.0009090909090909091,
+        "observed_completeness@50": 0.026363636363636363,
+        "observed_recall@10": 0.030212121212121208,
+        "observed_recall@100": 0.08959090909090905,
+        "observed_recall@20": 0.07065151515151513,
+        "observed_recall@5": 0.015484848484848487,
+        "observed_recall@50": 0.08542424242424237,
+        "oracle_completeness@10": 0.02727272727272727,
+        "oracle_completeness@100": 0.02727272727272727,
+        "oracle_completeness@20": 0.02727272727272727,
+        "oracle_completeness@5": 0.02727272727272727,
+        "oracle_completeness@50": 0.02727272727272727,
+        "oracle_recall@10": 0.08959090909090905,
+        "oracle_recall@100": 0.08959090909090905,
+        "oracle_recall@20": 0.08959090909090905,
+        "oracle_recall@5": 0.08959090909090905,
+        "oracle_recall@50": 0.08959090909090905,
+        "prediction_path": "/root/autodl-tmp/runs/m7_reranker/predictions/capability/reranked_predictions.jsonl"
+      },
+      "m7_joint_joint_base": {
+        "available": true,
+        "avg_candidate_pool_size": 98.21818181818182,
+        "avg_unique_candidate_pool_size": 98.21818181818182,
+        "evaluated_queries": 1100,
+        "full_pool_completeness": 0.02727272727272727,
+        "full_pool_recall": 0.09034848484848482,
+        "observed_completeness@10": 0.0036363636363636364,
+        "observed_completeness@100": 0.02727272727272727,
+        "observed_completeness@20": 0.013636363636363636,
+        "observed_completeness@5": 0.0009090909090909091,
+        "observed_completeness@50": 0.025454545454545455,
+        "observed_recall@10": 0.03127272727272728,
+        "observed_recall@100": 0.09034848484848482,
+        "observed_recall@20": 0.06665151515151513,
+        "observed_recall@5": 0.01893939393939394,
+        "observed_recall@50": 0.08057575757575754,
+        "oracle_completeness@10": 0.02727272727272727,
+        "oracle_completeness@100": 0.02727272727272727,
+        "oracle_completeness@20": 0.02727272727272727,
+        "oracle_completeness@5": 0.02727272727272727,
+        "oracle_completeness@50": 0.02727272727272727,
+        "oracle_recall@10": 0.09034848484848482,
+        "oracle_recall@100": 0.09034848484848482,
+        "oracle_recall@20": 0.09034848484848482,
+        "oracle_recall@5": 0.09034848484848482,
+        "oracle_recall@50": 0.09034848484848482,
+        "prediction_path": "/root/autodl-tmp/runs/m7_joint_reranker/predictions/capability/joint_base/reranked_predictions.jsonl"
+      },
+      "m7_joint_shared_encoder": {
+        "available": true,
+        "avg_candidate_pool_size": 98.21818181818182,
+        "avg_unique_candidate_pool_size": 98.21818181818182,
+        "evaluated_queries": 1100,
+        "full_pool_completeness": 0.02727272727272727,
+        "full_pool_recall": 0.09019696969696966,
+        "observed_completeness@10": 0.006363636363636364,
+        "observed_completeness@100": 0.02727272727272727,
+        "observed_completeness@20": 0.014545454545454545,
+        "observed_completeness@5": 0.0009090909090909091,
+        "observed_completeness@50": 0.026363636363636363,
+        "observed_recall@10": 0.03915151515151517,
+        "observed_recall@100": 0.09019696969696966,
+        "observed_recall@20": 0.06665151515151513,
+        "observed_recall@5": 0.022227272727272724,
+        "observed_recall@50": 0.07725757575757573,
+        "oracle_completeness@10": 0.02727272727272727,
+        "oracle_completeness@100": 0.02727272727272727,
+        "oracle_completeness@20": 0.02727272727272727,
+        "oracle_completeness@5": 0.02727272727272727,
+        "oracle_completeness@50": 0.02727272727272727,
+        "oracle_recall@10": 0.09019696969696966,
+        "oracle_recall@100": 0.09019696969696966,
+        "oracle_recall@20": 0.09019696969696966,
+        "oracle_recall@5": 0.09019696969696966,
+        "oracle_recall@50": 0.09019696969696966,
+        "prediction_path": "/root/autodl-tmp/runs/m7_joint_reranker/predictions/capability/shared_encoder/reranked_predictions.jsonl"
+      },
+      "m7_joint_shared_encoder_soft_code": {
+        "available": true,
+        "avg_candidate_pool_size": 98.21818181818182,
+        "avg_unique_candidate_pool_size": 98.21818181818182,
+        "evaluated_queries": 1100,
+        "full_pool_completeness": 0.02727272727272727,
+        "full_pool_recall": 0.08883333333333328,
+        "observed_completeness@10": 0.007272727272727273,
+        "observed_completeness@100": 0.02727272727272727,
+        "observed_completeness@20": 0.014545454545454545,
+        "observed_completeness@5": 0.0027272727272727275,
+        "observed_completeness@50": 0.026363636363636363,
+        "observed_recall@10": 0.04634848484848487,
+        "observed_recall@100": 0.08883333333333328,
+        "observed_recall@20": 0.06453030303030302,
+        "observed_recall@5": 0.035378787878787885,
+        "observed_recall@50": 0.08006060606060604,
+        "oracle_completeness@10": 0.02727272727272727,
+        "oracle_completeness@100": 0.02727272727272727,
+        "oracle_completeness@20": 0.02727272727272727,
+        "oracle_completeness@5": 0.02727272727272727,
+        "oracle_completeness@50": 0.02727272727272727,
+        "oracle_recall@10": 0.08883333333333328,
+        "oracle_recall@100": 0.08883333333333328,
+        "oracle_recall@20": 0.08883333333333328,
+        "oracle_recall@5": 0.08883333333333328,
+        "oracle_recall@50": 0.08883333333333328,
+        "prediction_path": "/root/autodl-tmp/runs/m7_joint_reranker/predictions/capability/shared_encoder_soft_code/reranked_predictions.jsonl"
+      },
+      "m7_joint_soft_code_distribution": {
+        "available": true,
+        "avg_candidate_pool_size": 98.21818181818182,
+        "avg_unique_candidate_pool_size": 98.21818181818182,
+        "evaluated_queries": 1100,
+        "full_pool_completeness": 0.02727272727272727,
+        "full_pool_recall": 0.08928787878787875,
+        "observed_completeness@10": 0.005454545454545455,
+        "observed_completeness@100": 0.02727272727272727,
+        "observed_completeness@20": 0.016363636363636365,
+        "observed_completeness@5": 0.0018181818181818182,
+        "observed_completeness@50": 0.026363636363636363,
+        "observed_recall@10": 0.04286363636363639,
+        "observed_recall@100": 0.08928787878787875,
+        "observed_recall@20": 0.0702121212121212,
+        "observed_recall@5": 0.0259090909090909,
+        "observed_recall@50": 0.08269696969696966,
+        "oracle_completeness@10": 0.02727272727272727,
+        "oracle_completeness@100": 0.02727272727272727,
+        "oracle_completeness@20": 0.02727272727272727,
+        "oracle_completeness@5": 0.02727272727272727,
+        "oracle_completeness@50": 0.02727272727272727,
+        "oracle_recall@10": 0.08928787878787875,
+        "oracle_recall@100": 0.08928787878787875,
+        "oracle_recall@20": 0.08928787878787875,
+        "oracle_recall@5": 0.08928787878787875,
+        "oracle_recall@50": 0.08928787878787875,
+        "prediction_path": "/root/autodl-tmp/runs/m7_joint_reranker/predictions/capability/soft_code_distribution/reranked_predictions.jsonl"
+      }
+    }
+  },
+  "codebook": {
+    "m4_data_root": "/root/autodl-tmp/data/processed/m4/capability",
+    "query_code_alignment_diagnostics": {
+      "avg_query_candidate_text_token_recall": 0.12095882876160106,
+      "evaluated_query_candidate_pairs": 813445,
+      "l1_label_token_hit_rate": 0.08838704522125036,
+      "l2_label_token_hit_rate": 0.0684803520828083,
+      "l3_label_token_hit_rate": 0.020071424619980453,
+      "l4_label_token_hit_rate": 0.0
+    },
+    "query_gold_path_diagnostics": {
+      "avg_gold_count": 2.470922550249539,
+      "avg_pair_code_overlap_ratio": 0.5347929561219683,
+      "avg_unique_gold_semantic_paths": 2.427144623291728,
+      "disjoint_gold_path_pair_ratio": 0.030042616328497706,
+      "evaluated_queries": 329207,
+      "fully_disjoint_multi_gold_query_ratio": 0.014468100617544584,
+      "multi_path_query_ratio": 0.9064296931717734
+    },
+    "semantic_group_diagnostics": {
+      "avg_candidates_per_semantic_path": 1.2317321799439818,
+      "avg_category_purity": 0.7342186993883734,
+      "avg_role_purity": 1.0,
+      "avg_source_purity": 1.0,
+      "candidate_count": 64645,
+      "max_candidates_per_semantic_path": 244,
+      "semantic_path_count": 52483
+    }
+  },
+  "multi_positive": {
+    "gold_count_distribution": {
+      "1": 26870,
+      "10": 15,
+      "2": 177384,
+      "3": 81684,
+      "4": 30911,
+      "5": 11419,
+      "6": 711,
+      "7": 120,
+      "8": 77,
+      "9": 16
+    },
+    "gold_semantic_path_count_distribution": {
+      "1": 30804,
+      "10": 12,
+      "2": 178451,
+      "3": 80373,
+      "4": 28784,
+      "5": 9995,
+      "6": 615,
+      "7": 108,
+      "8": 54,
+      "9": 11
+    },
+    "m4_data_root": "/root/autodl-tmp/data/processed/m4/capability",
+    "multi_code_path_query_ratio": 0.9064296931717734,
+    "multi_gold_query_ratio": 0.9183796213324747,
+    "queries": 329207,
+    "sequence_contains_all_gold_ratio": 1.0,
+    "sequence_length_distribution": {
+      "0": 202875,
+      "1": 11438,
+      "2": 27206,
+      "3": 18147,
+      "4": 20930,
+      "5": 48611
+    },
+    "sequence_query_ratio": 0.3837463966440568,
+    "source_distribution": {
+      "api_bank": 261,
+      "toolbench": 328946
+    },
+    "split_distribution": {
+      "test": 1100,
+      "train": 328107
+    }
+  },
+  "negative_sampling": {
+    "avg_negatives_per_query": 8.008703528670447,
+    "avg_positives_per_query": 4.004435452110901,
+    "examples": 2440301,
+    "feature_summary": {
+      "code_match_score": {
+        "gap_positive_minus_negative": 0.3667735497179836,
+        "negative_mean": 0.6332264502820164,
+        "positive_mean": 1.0
+      },
+      "constraint_violation_penalty": {
+        "gap_positive_minus_negative": 0.0,
+        "negative_mean": 0.0,
+        "positive_mean": 0.0
+      },
+      "coverage_gain_score": {
+        "gap_positive_minus_negative": 0.4047071406179889,
+        "negative_mean": 0.0,
+        "positive_mean": 0.4047071406179889
+      },
+      "first_tool_prior": {
+        "gap_positive_minus_negative": -0.02577657916869669,
+        "negative_mean": 0.5929083459138362,
+        "positive_mean": 0.5671317667451395
+      },
+      "generic_penalty": {
+        "gap_positive_minus_negative": -0.04030301101360709,
+        "negative_mean": 0.09667812930490449,
+        "positive_mean": 0.056375118291297405
+      },
+      "matched_levels": {
+        "gap_positive_minus_negative": 0.3667735497179836,
+        "negative_mean": 0.6332264502820164,
+        "positive_mean": 1.0
+      },
+      "parameter_compatibility_score": {
+        "gap_positive_minus_negative": 0.006172530901660846,
+        "negative_mean": 0.01158898851906363,
+        "positive_mean": 0.017761519420724476
+      },
+      "role_compatibility_score": {
+        "gap_positive_minus_negative": 0.2275319781915188,
+        "negative_mean": 0.0,
+        "positive_mean": 0.2275319781915188
+      },
+      "schema_evidence_score": {
+        "gap_positive_minus_negative": 0.07084380408938991,
+        "negative_mean": 0.064755123263964,
+        "positive_mean": 0.1355989273533539
+      },
+      "text_overlap_score": {
+        "gap_positive_minus_negative": 0.035421902044694954,
+        "negative_mean": 0.032377561631982,
+        "positive_mean": 0.06779946367667695
+      },
+      "transition_prior": {
+        "gap_positive_minus_negative": -0.004484896754529899,
+        "negative_mean": 0.7201082640381201,
+        "positive_mean": 0.7156233672835902
+      }
+    },
+    "m7_data_root": "/root/autodl-tmp/data/processed/m7/capability",
+    "negative_matched_levels_distribution": {
+      "0.25": 64656,
+      "0.5": 639651,
+      "0.75": 913481,
+      "1.0": 9068
+    },
+    "negative_to_positive_ratio": 1.999958202459908,
+    "negatives": 1626856,
+    "positives": 813445
+  },
+  "output_root": "/root/autodl-tmp/reports/diagnostics/capability",
+  "prediction_paths": {
+    "m4": "/root/autodl-tmp/runs/m4_query_to_code/predictions/capability/predictions.jsonl",
+    "m5": "/root/autodl-tmp/runs/m5_residual_selector/predictions/capability/predictions.jsonl",
+    "m7": "/root/autodl-tmp/runs/m7_reranker/predictions/capability/reranked_predictions.jsonl",
+    "m7_joint_joint_base": "/root/autodl-tmp/runs/m7_joint_reranker/predictions/capability/joint_base/reranked_predictions.jsonl",
+    "m7_joint_shared_encoder": "/root/autodl-tmp/runs/m7_joint_reranker/predictions/capability/shared_encoder/reranked_predictions.jsonl",
+    "m7_joint_shared_encoder_soft_code": "/root/autodl-tmp/runs/m7_joint_reranker/predictions/capability/shared_encoder_soft_code/reranked_predictions.jsonl",
+    "m7_joint_soft_code_distribution": "/root/autodl-tmp/runs/m7_joint_reranker/predictions/capability/soft_code_distribution/reranked_predictions.jsonl"
+  },
+  "project_root": "/root/autodl-tmp",
+  "sequence_chain": {
+    "m4_data_root": "/root/autodl-tmp/data/processed/m4/capability",
+    "m4_queries": 203136,
+    "m4_queries_with_sequence_ids": 126332,
+    "prediction_sequence_diagnostics": {
+      "m4": {
+        "available": true,
+        "prediction_path": "/root/autodl-tmp/runs/m4_query_to_code/predictions/capability/predictions.jsonl",
+        "prediction_rows": 1100,
+        "rows_joinable_to_m4_sequence_ids": 0,
+        "rows_with_predicted_tool_order": 0,
+        "rows_with_sequence_ids_in_prediction": 0,
+        "sequence_eval_direct_ratio": 0.0,
+        "sequence_eval_possible_by_join_ratio": 0.0
+      },
+      "m5": {
+        "available": true,
+        "prediction_path": "/root/autodl-tmp/runs/m5_residual_selector/predictions/capability/predictions.jsonl",
+        "prediction_rows": 1100,
+        "rows_joinable_to_m4_sequence_ids": 0,
+        "rows_with_predicted_tool_order": 0,
+        "rows_with_sequence_ids_in_prediction": 0,
+        "sequence_eval_direct_ratio": 0.0,
+        "sequence_eval_possible_by_join_ratio": 0.0
+      },
+      "m7": {
+        "available": true,
+        "prediction_path": "/root/autodl-tmp/runs/m7_reranker/predictions/capability/reranked_predictions.jsonl",
+        "prediction_rows": 1100,
+        "rows_joinable_to_m4_sequence_ids": 0,
+        "rows_with_predicted_tool_order": 1100,
+        "rows_with_sequence_ids_in_prediction": 0,
+        "sequence_eval_direct_ratio": 0.0,
+        "sequence_eval_possible_by_join_ratio": 0.0
+      },
+      "m7_joint_joint_base": {
+        "available": true,
+        "prediction_path": "/root/autodl-tmp/runs/m7_joint_reranker/predictions/capability/joint_base/reranked_predictions.jsonl",
+        "prediction_rows": 1100,
+        "rows_joinable_to_m4_sequence_ids": 0,
+        "rows_with_predicted_tool_order": 1100,
+        "rows_with_sequence_ids_in_prediction": 0,
+        "sequence_eval_direct_ratio": 0.0,
+        "sequence_eval_possible_by_join_ratio": 0.0
+      },
+      "m7_joint_shared_encoder": {
+        "available": true,
+        "prediction_path": "/root/autodl-tmp/runs/m7_joint_reranker/predictions/capability/shared_encoder/reranked_predictions.jsonl",
+        "prediction_rows": 1100,
+        "rows_joinable_to_m4_sequence_ids": 0,
+        "rows_with_predicted_tool_order": 1100,
+        "rows_with_sequence_ids_in_prediction": 0,
+        "sequence_eval_direct_ratio": 0.0,
+        "sequence_eval_possible_by_join_ratio": 0.0
+      },
+      "m7_joint_shared_encoder_soft_code": {
+        "available": true,
+        "prediction_path": "/root/autodl-tmp/runs/m7_joint_reranker/predictions/capability/shared_encoder_soft_code/reranked_predictions.jsonl",
+        "prediction_rows": 1100,
+        "rows_joinable_to_m4_sequence_ids": 0,
+        "rows_with_predicted_tool_order": 1100,
+        "rows_with_sequence_ids_in_prediction": 0,
+        "sequence_eval_direct_ratio": 0.0,
+        "sequence_eval_possible_by_join_ratio": 0.0
+      },
+      "m7_joint_soft_code_distribution": {
+        "available": true,
+        "prediction_path": "/root/autodl-tmp/runs/m7_joint_reranker/predictions/capability/soft_code_distribution/reranked_predictions.jsonl",
+        "prediction_rows": 1100,
+        "rows_joinable_to_m4_sequence_ids": 0,
+        "rows_with_predicted_tool_order": 1100,
+        "rows_with_sequence_ids_in_prediction": 0,
+        "sequence_eval_direct_ratio": 0.0,
+        "sequence_eval_possible_by_join_ratio": 0.0
+      }
+    }
+  },
+  "target": "capability"
+}

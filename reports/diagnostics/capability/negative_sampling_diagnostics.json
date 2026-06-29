@@ -1,0 +1,72 @@
+{
+  "avg_negatives_per_query": 8.008703528670447,
+  "avg_positives_per_query": 4.004435452110901,
+  "examples": 2440301,
+  "feature_summary": {
+    "code_match_score": {
+      "gap_positive_minus_negative": 0.3667735497179836,
+      "negative_mean": 0.6332264502820164,
+      "positive_mean": 1.0
+    },
+    "constraint_violation_penalty": {
+      "gap_positive_minus_negative": 0.0,
+      "negative_mean": 0.0,
+      "positive_mean": 0.0
+    },
+    "coverage_gain_score": {
+      "gap_positive_minus_negative": 0.4047071406179889,
+      "negative_mean": 0.0,
+      "positive_mean": 0.4047071406179889
+    },
+    "first_tool_prior": {
+      "gap_positive_minus_negative": -0.02577657916869669,
+      "negative_mean": 0.5929083459138362,
+      "positive_mean": 0.5671317667451395
+    },
+    "generic_penalty": {
+      "gap_positive_minus_negative": -0.04030301101360709,
+      "negative_mean": 0.09667812930490449,
+      "positive_mean": 0.056375118291297405
+    },
+    "matched_levels": {
+      "gap_positive_minus_negative": 0.3667735497179836,
+      "negative_mean": 0.6332264502820164,
+      "positive_mean": 1.0
+    },
+    "parameter_compatibility_score": {
+      "gap_positive_minus_negative": 0.006172530901660846,
+      "negative_mean": 0.01158898851906363,
+      "positive_mean": 0.017761519420724476
+    },
+    "role_compatibility_score": {
+      "gap_positive_minus_negative": 0.2275319781915188,
+      "negative_mean": 0.0,
+      "positive_mean": 0.2275319781915188
+    },
+    "schema_evidence_score": {
+      "gap_positive_minus_negative": 0.07084380408938991,
+      "negative_mean": 0.064755123263964,
+      "positive_mean": 0.1355989273533539
+    },
+    "text_overlap_score": {
+      "gap_positive_minus_negative": 0.035421902044694954,
+      "negative_mean": 0.032377561631982,
+      "positive_mean": 0.06779946367667695
+    },
+    "transition_prior": {
+      "gap_positive_minus_negative": -0.004484896754529899,
+      "negative_mean": 0.7201082640381201,
+      "positive_mean": 0.7156233672835902
+    }
+  },
+  "m7_data_root": "/root/autodl-tmp/data/processed/m7/capability",
+  "negative_matched_levels_distribution": {
+    "0.25": 64656,
+    "0.5": 639651,
+    "0.75": 913481,
+    "1.0": 9068
+  },
+  "negative_to_positive_ratio": 1.999958202459908,
+  "negatives": 1626856,
+  "positives": 813445
+}

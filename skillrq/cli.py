@@ -13,10 +13,13 @@ from .codebook import build_m3_codebooks
 from .codebook.runner import DEFAULT_M3_DATASETS
 from .config.loader import load_paths_config
 from .data import build_skillret_processed_data
+from .diagnostics import run_diagnostics
 from .m4 import prepare_m4_data
 from .m4.baselines import train_rq_kmeans, train_rq_vae
 from .m4.evaluate import evaluate_m4_predictions
 from .m4.predict import predict_query_codes
+from .m4.sequence_split import build_sequence_eval_view
+from .m4.soft import predict_soft_multipath_codes, train_soft_multipath_code_predictor
 from .m4.train import train_capabilityrq
 from .m5 import prepare_m5_data
 from .m5.evaluate import evaluate_m5_predictions
@@ -193,6 +196,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     m4_train_parser = m4_subparsers.add_parser("train", help="Train CapabilityRQ query-to-code model.")
     m4_train_parser.add_argument("--target", choices=["capability", "skill"], required=True)
+    m4_train_parser.add_argument("--model-kind", choices=["hard", "soft-multipath"], default="hard")
     m4_train_parser.add_argument("--data-root", type=Path, default=None)
     m4_train_parser.add_argument("--output-root", type=Path, default=None)
     m4_train_parser.add_argument("--epochs", type=int, default=5)
@@ -200,7 +204,13 @@ def build_parser() -> argparse.ArgumentParser:
     m4_train_parser.add_argument("--learning-rate", type=float, default=1e-3)
     m4_train_parser.add_argument("--embedding-dim", type=int, default=256)
     m4_train_parser.add_argument("--hidden-dim", type=int, default=512)
+    m4_train_parser.add_argument("--code-embedding-dim", type=int, default=128)
     m4_train_parser.add_argument("--max-vocab-size", type=int, default=200000)
+    m4_train_parser.add_argument("--contrastive-weight", type=float, default=1.0)
+    m4_train_parser.add_argument("--hierarchy-weight", type=float, default=1.0)
+    m4_train_parser.add_argument("--path-bce-weight", type=float, default=0.2)
+    m4_train_parser.add_argument("--contrastive-negative-count", type=int, default=256)
+    m4_train_parser.add_argument("--temperature", type=float, default=0.07)
     m4_train_parser.add_argument("--device", default=None)
     m4_train_parser.add_argument("--swanlab-project", default="SkillRQ-M4")
     m4_train_parser.add_argument("--swanlab-run-name", default=None)
@@ -209,11 +219,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     m4_predict_parser = m4_subparsers.add_parser("predict", help="Predict code paths and retrieve candidates.")
     m4_predict_parser.add_argument("--target", choices=["capability", "skill"], required=True)
+    m4_predict_parser.add_argument("--model-kind", choices=["hard", "soft-multipath"], default="hard")
     m4_predict_parser.add_argument("--data-root", type=Path, default=None)
     m4_predict_parser.add_argument("--checkpoint-root", type=Path, required=True)
     m4_predict_parser.add_argument("--output-root", type=Path, default=None)
     m4_predict_parser.add_argument("--top-n-paths", type=int, default=8)
     m4_predict_parser.add_argument("--candidate-budget", type=int, default=100)
+    m4_predict_parser.add_argument("--beam-width", type=int, default=8)
+    m4_predict_parser.add_argument("--score-blend", type=float, default=0.65)
     m4_predict_parser.add_argument("--split", default=None)
     m4_predict_parser.add_argument("--device", default=None)
     m4_predict_parser.add_argument("--swanlab-project", default="SkillRQ-M4")
@@ -226,6 +239,15 @@ def build_parser() -> argparse.ArgumentParser:
     m4_eval_parser.add_argument("--output-path", type=Path, required=True)
     m4_eval_parser.add_argument("--top-k", default="1,5,10,20,50,100")
     m4_eval_parser.add_argument("--set-metric-name", default="tool_set_recall")
+
+    m4_sequence_parser = m4_subparsers.add_parser("sequence-split", help="Build sequence-dev/test view from M4 data.")
+    m4_sequence_parser.add_argument("--target", choices=["capability"], default="capability")
+    m4_sequence_parser.add_argument("--data-root", type=Path, default=None)
+    m4_sequence_parser.add_argument("--output-root", type=Path, default=None)
+    m4_sequence_parser.add_argument("--sequence-dev-size", type=int, default=2000)
+    m4_sequence_parser.add_argument("--sequence-test-size", type=int, default=5000)
+    m4_sequence_parser.add_argument("--seed", type=int, default=13)
+    m4_sequence_parser.add_argument("--paths", type=Path, default=None)
 
     m4_rqk_parser = m4_subparsers.add_parser("rq-kmeans", help="Train RQ-KMeans code retrieval baseline.")
     m4_rqk_parser.add_argument("--target", choices=["capability", "skill"], required=True)
@@ -396,6 +418,15 @@ def build_parser() -> argparse.ArgumentParser:
     m7_eval_parser.add_argument("--top-k", default="5,10,20,50,100")
     m7_eval_parser.add_argument("--set-metric-name", default="tool_set_recall")
 
+    diagnostics_parser = subparsers.add_parser("diagnostics", help="Run upper-bound and attribution diagnostics.")
+    diagnostics_subparsers = diagnostics_parser.add_subparsers(dest="diagnostics_command")
+    diagnostics_run_parser = diagnostics_subparsers.add_parser("run", help="Run all diagnostics.")
+    diagnostics_run_parser.add_argument("--target", choices=["capability", "skill"], default="capability")
+    diagnostics_run_parser.add_argument("--project-root", type=Path, default=Path("."))
+    diagnostics_run_parser.add_argument("--output-root", type=Path, default=None)
+    diagnostics_run_parser.add_argument("--top-k", default="5,10,20,50,100")
+    diagnostics_run_parser.add_argument("--no-joint-predictions", action="store_true")
+
     return parser
 
 
@@ -468,37 +499,75 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.m4_command == "train":
             paths = load_paths_config(args.paths)
             data_root = args.data_root or paths.processed_root / "m4" / args.target
-            output_root = args.output_root or paths.run_root / "m4_query_to_code" / "capabilityrq" / args.target
-            summary = train_capabilityrq(
-                data_root=data_root,
-                output_root=output_root,
-                epochs=args.epochs,
-                batch_size=args.batch_size,
-                learning_rate=args.learning_rate,
-                embedding_dim=args.embedding_dim,
-                hidden_dim=args.hidden_dim,
-                max_vocab_size=args.max_vocab_size,
-                device=args.device,
-                swanlab_project=None if args.disable_swanlab else args.swanlab_project,
-                swanlab_run_name=args.swanlab_run_name,
-            )
+            if args.model_kind == "soft-multipath":
+                output_root = args.output_root or paths.run_root / "m4_query_to_code" / "soft_multipath" / args.target
+                summary = train_soft_multipath_code_predictor(
+                    data_root=data_root,
+                    output_root=output_root,
+                    epochs=args.epochs,
+                    batch_size=args.batch_size,
+                    learning_rate=args.learning_rate,
+                    embedding_dim=args.embedding_dim,
+                    hidden_dim=args.hidden_dim,
+                    code_embedding_dim=args.code_embedding_dim,
+                    max_vocab_size=args.max_vocab_size,
+                    contrastive_weight=args.contrastive_weight,
+                    hierarchy_weight=args.hierarchy_weight,
+                    path_bce_weight=args.path_bce_weight,
+                    contrastive_negative_count=args.contrastive_negative_count,
+                    temperature=args.temperature,
+                    device=args.device,
+                    swanlab_project=None if args.disable_swanlab else args.swanlab_project,
+                    swanlab_run_name=args.swanlab_run_name,
+                )
+            else:
+                output_root = args.output_root or paths.run_root / "m4_query_to_code" / "capabilityrq" / args.target
+                summary = train_capabilityrq(
+                    data_root=data_root,
+                    output_root=output_root,
+                    epochs=args.epochs,
+                    batch_size=args.batch_size,
+                    learning_rate=args.learning_rate,
+                    embedding_dim=args.embedding_dim,
+                    hidden_dim=args.hidden_dim,
+                    max_vocab_size=args.max_vocab_size,
+                    device=args.device,
+                    swanlab_project=None if args.disable_swanlab else args.swanlab_project,
+                    swanlab_run_name=args.swanlab_run_name,
+                )
             print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
             return 0
         if args.m4_command == "predict":
             paths = load_paths_config(args.paths)
             data_root = args.data_root or paths.processed_root / "m4" / args.target
-            output_root = args.output_root or paths.run_root / "m4_query_to_code" / "predictions" / args.target
-            summary = predict_query_codes(
-                data_root=data_root,
-                checkpoint_root=args.checkpoint_root,
-                output_root=output_root,
-                top_n_paths=args.top_n_paths,
-                candidate_budget=args.candidate_budget,
-                split=args.split,
-                device=args.device,
-                swanlab_project=None if args.disable_swanlab else args.swanlab_project,
-                swanlab_run_name=args.swanlab_run_name,
-            )
+            if args.model_kind == "soft-multipath":
+                output_root = args.output_root or paths.run_root / "m4_query_to_code" / "predictions" / "soft_multipath" / args.target
+                summary = predict_soft_multipath_codes(
+                    data_root=data_root,
+                    checkpoint_root=args.checkpoint_root,
+                    output_root=output_root,
+                    top_n_paths=args.top_n_paths,
+                    candidate_budget=args.candidate_budget,
+                    split=args.split,
+                    beam_width=args.beam_width,
+                    score_blend=args.score_blend,
+                    device=args.device,
+                    swanlab_project=None if args.disable_swanlab else args.swanlab_project,
+                    swanlab_run_name=args.swanlab_run_name,
+                )
+            else:
+                output_root = args.output_root or paths.run_root / "m4_query_to_code" / "predictions" / args.target
+                summary = predict_query_codes(
+                    data_root=data_root,
+                    checkpoint_root=args.checkpoint_root,
+                    output_root=output_root,
+                    top_n_paths=args.top_n_paths,
+                    candidate_budget=args.candidate_budget,
+                    split=args.split,
+                    device=args.device,
+                    swanlab_project=None if args.disable_swanlab else args.swanlab_project,
+                    swanlab_run_name=args.swanlab_run_name,
+                )
             print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
             return 0
         if args.m4_command == "evaluate":
@@ -509,6 +578,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                 set_metric_name=args.set_metric_name,
             )
             print(json.dumps(metrics, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+        if args.m4_command == "sequence-split":
+            paths = load_paths_config(args.paths)
+            data_root = args.data_root or paths.processed_root / "m4" / args.target
+            output_root = args.output_root or paths.processed_root / "m4_sequence_eval" / args.target
+            stats = build_sequence_eval_view(
+                m4_data_root=data_root,
+                output_root=output_root,
+                sequence_dev_size=args.sequence_dev_size,
+                sequence_test_size=args.sequence_test_size,
+                seed=args.seed,
+            )
+            print(json.dumps(stats, ensure_ascii=False, indent=2, sort_keys=True))
             return 0
         if args.m4_command == "rq-kmeans":
             paths = load_paths_config(args.paths)
@@ -712,6 +794,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                 set_metric_name=args.set_metric_name,
             )
             print(json.dumps(metrics, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+
+    if args.command == "diagnostics":
+        if args.diagnostics_command == "run":
+            summary = run_diagnostics(
+                project_root=args.project_root.resolve(),
+                target=args.target,
+                output_root=args.output_root,
+                top_ks=_parse_top_k(args.top_k),
+                include_joint_predictions=not args.no_joint_predictions,
+            )
+            print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
             return 0
 
     parser.print_help()

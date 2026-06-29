@@ -1,0 +1,29 @@
+{
+  "m4_data_root": "/root/autodl-tmp/data/processed/m4/capability",
+  "query_code_alignment_diagnostics": {
+    "avg_query_candidate_text_token_recall": 0.12095882876160106,
+    "evaluated_query_candidate_pairs": 813445,
+    "l1_label_token_hit_rate": 0.08838704522125036,
+    "l2_label_token_hit_rate": 0.0684803520828083,
+    "l3_label_token_hit_rate": 0.020071424619980453,
+    "l4_label_token_hit_rate": 0.0
+  },
+  "query_gold_path_diagnostics": {
+    "avg_gold_count": 2.470922550249539,
+    "avg_pair_code_overlap_ratio": 0.5347929561219683,
+    "avg_unique_gold_semantic_paths": 2.427144623291728,
+    "disjoint_gold_path_pair_ratio": 0.030042616328497706,
+    "evaluated_queries": 329207,
+    "fully_disjoint_multi_gold_query_ratio": 0.014468100617544584,
+    "multi_path_query_ratio": 0.9064296931717734
+  },
+  "semantic_group_diagnostics": {
+    "avg_candidates_per_semantic_path": 1.2317321799439818,
+    "avg_category_purity": 0.7342186993883734,
+    "avg_role_purity": 1.0,
+    "avg_source_purity": 1.0,
+    "candidate_count": 64645,
+    "max_candidates_per_semantic_path": 244,
+    "semantic_path_count": 52483
+  }
+}

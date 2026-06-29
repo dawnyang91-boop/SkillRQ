@@ -12,6 +12,7 @@ from typing import Any, Mapping, Sequence
 from .model import build_query_code_model
 from .swanlab_utils import SwanLabLogger
 from .torch_utils import require_torch
+from ..splits import is_eval_split
 from ..utils.io import read_jsonl, write_json
 
 
@@ -43,7 +44,7 @@ def train_capabilityrq(
     vocab = _build_vocab(rows, max_vocab_size=max_vocab_size)
     code_vocabs = _build_code_vocabs(rows)
     train_rows = [row for row in rows if row.get("split") == "train"] or rows
-    dev_rows = [row for row in rows if row.get("split") in {"dev", "test"}][: max(batch_size * 4, 1)]
+    dev_rows = [row for row in rows if is_eval_split(row.get("split"))][: max(batch_size * 4, 1)]
 
     resolved_device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
     model = build_query_code_model(

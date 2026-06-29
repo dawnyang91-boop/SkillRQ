@@ -720,6 +720,7 @@ CapabilityRQ code retrieval
 * 已新增 PyTorch query-to-code 主模型：`skillrq/m4/model.py`。
 * 已新增 CapabilityRQ 训练入口：`skillrq/m4/train.py`。
 * 已新增 code path 预测与 explicit candidate retrieval：`skillrq/m4/predict.py`。
+* 已新增 soft multi-path M4 分支：`skillrq/m4/soft.py`。
 * 已新增 M4 评估：`skillrq/m4/evaluate.py`。
 * 已新增 RQ-KMeans 与 Ordinary RQ-VAE 对照训练入口：`skillrq/m4/baselines.py`。
 * 已新增 PyTorch optional dependency：`pyproject.toml` 中的 `train` extra。
@@ -728,7 +729,9 @@ CapabilityRQ code retrieval
 ```bash
 python3 -m skillrq m4 prepare
 python3 -m skillrq m4 train
+python3 -m skillrq m4 train --model-kind soft-multipath
 python3 -m skillrq m4 predict
+python3 -m skillrq m4 predict --model-kind soft-multipath
 python3 -m skillrq m4 evaluate
 python3 -m skillrq m4 rq-kmeans
 python3 -m skillrq m4 rq-vae
@@ -736,11 +739,25 @@ python3 -m skillrq m4 rq-vae
 
 训练设计：
 
-* CapabilityRQ 主模型将每条 query 与 gold capability/skill 的 semantic code path 配对训练。
-* 模型结构为 PyTorch EmbeddingBag query encoder + MLP + 四个 code-level classification heads。
-* 训练目标为 L1/L2/L3/L4 四层 cross entropy。
-* 推理时使用各层 top codes 的 beam combination 生成 top-N code paths。
+* 默认 `--model-kind hard` 保留原始 hard single-label query-to-code baseline：每条 query-tool pair 对应一条 semantic code path，模型结构为 EmbeddingBag query encoder + MLP + 四个 code-level classification heads，训练目标为 L1/L2/L3/L4 四层 cross entropy。
+* 新增 `--model-kind soft-multipath` 分支作为 CapabilityRQ 主推荐实现：
+  * 按 query 聚合多个 gold tools / APIs 对应的多个 gold code paths。
+  * L1 使用 multi-label BCE，支持一个 query 同时命中多个 domain/path root。
+  * L2/L3/L4 使用 teacher-forced hierarchical prediction：
+
+```text
+P(code_path | q)
+= P(L1 | q)
+  * P(L2 | q, L1)
+  * P(L3 | q, L1, L2)
+  * P(L4 | q, L1, L2, L3)
+```
+
+  * query-code alignment 使用 multi-positive contrastive loss：query embedding 靠近所有 gold code path embeddings，远离 sampled negative code paths。
+  * sampled path BCE 用于稳定 code path distribution 的概率学习。
+* soft multi-path 推理时融合 hierarchical beam probability 与 contrastive code-path probability，输出 top-N `predicted_code_paths` distribution。
 * candidate retrieval 使用 predicted code path 与 candidate code path 的层级匹配分数，并输出 compact evidence。
+* 每条 soft multi-path code path 附带 `reason`、`verbalization` 与 `code_explanation`，用于后续 LLM planner prompt。
 * RQ-KMeans 对照使用 PyTorch 上的 residual k-means，在 candidate text hashed vectors 上学习多层 codebook。
 * Ordinary RQ-VAE 对照使用 PyTorch encoder / residual vector quantization / decoder reconstruction objective。
 
@@ -754,6 +771,14 @@ python3 -m skillrq m4 rq-vae
   * code match score；
   * code explanation；
   * capability text evidence。
+* `--model-kind soft-multipath` 每条 predicted code path 额外包含：
+
+  * semantic_id；
+  * probability；
+  * hierarchy_probability；
+  * contrastive_probability；
+  * reason；
+  * verbalization。
 * 对比 full-query retrieval，至少在以下一个维度有提升：
 
   * Recall@K；
@@ -783,11 +808,22 @@ python3 -m skillrq m4 rq-vae
 * README 已写入云服务器训练命令：
   * CapabilityRQ capability/skill training；
   * CapabilityRQ prediction；
+  * soft multi-path M4 training / prediction；
   * M4 evaluation；
   * RQ-KMeans training；
   * Ordinary RQ-VAE training。
-* 本地环境未安装 PyTorch，未在本机训练 checkpoint；训练代码已按云服务器执行路径准备。
-* 测试：`/opt/homebrew/anaconda3/bin/pytest` 通过，结果为 `10 passed`。
+* soft multi-path M4 已支持显式 CLI 参数：
+  * `--model-kind soft-multipath`
+  * `--code-embedding-dim`
+  * `--hierarchy-weight`
+  * `--contrastive-weight`
+  * `--path-bce-weight`
+  * `--contrastive-negative-count`
+  * `--temperature`
+  * `--beam-width`
+  * `--score-blend`
+* 本地未训练完整 checkpoint；训练代码已按云服务器执行路径准备。
+* 测试：`/opt/homebrew/anaconda3/bin/pytest` 通过。
 
 ---
 
@@ -1181,9 +1217,27 @@ python3 -m skillrq m7 joint-predict --target capability --prediction-path runs/m
 python3 -m skillrq m7 evaluate --prediction-path runs/m7_reranker/predictions/capability/reranked_predictions.jsonl --output-path reports/tables/m7_tool_reranking.json
 ```
 
+sequence-aware heldout 命令：
+
+```bash
+python3 -m skillrq m4 sequence-split --target capability --sequence-dev-size 2000 --sequence-test-size 5000 --seed 13
+python3 -m skillrq m5 prepare --target capability --m4-data-root data/processed/m4_sequence_eval/capability --output-root data/processed/m5_sequence_eval/capability
+python3 -m skillrq m7 prepare --target capability --m4-data-root data/processed/m4_sequence_eval/capability --output-root data/processed/m7_sequence_eval/capability --negatives-per-positive 2
+
+python3 -m skillrq m4 train --target capability --data-root data/processed/m4_sequence_eval/capability --output-root runs/m4_query_to_code/capabilityrq/capability_sequence_eval --device cuda
+python3 -m skillrq m5 train --target capability --data-root data/processed/m5_sequence_eval/capability --output-root runs/m5_residual_selector/capability_sequence_eval --device cuda
+python3 -m skillrq m7 train --target capability --data-root data/processed/m7_sequence_eval/capability --output-root runs/m7_reranker/capability_sequence_eval --device cuda
+
+python3 -m skillrq m5 predict --target capability --m4-data-root data/processed/m4_sequence_eval/capability --checkpoint-root runs/m5_residual_selector/capability_sequence_eval --output-root runs/m5_residual_selector/predictions/capability_sequence_eval --split sequence_test --device cuda
+python3 -m skillrq m7 predict --target capability --m4-data-root data/processed/m4_sequence_eval/capability --prediction-path runs/m5_residual_selector/predictions/capability_sequence_eval/predictions.jsonl --checkpoint-root runs/m7_reranker/capability_sequence_eval --output-root runs/m7_reranker/predictions/capability_sequence_eval --device cuda
+python3 -m skillrq m7 evaluate --prediction-path runs/m7_reranker/predictions/capability_sequence_eval/reranked_predictions.jsonl --output-path reports/tables/m7_sequence_test_reranking.json
+```
+
 代码与产物：
 
 ```text
+skillrq/splits.py
+skillrq/m4/sequence_split.py
 skillrq/m7/features.py
 skillrq/m7/data.py
 skillrq/m7/model.py
@@ -1197,6 +1251,9 @@ skillrq/m7/joint_predict.py
 data/processed/m7/capability/rerank_examples.jsonl
 data/processed/m7/capability/query_candidate_pools.jsonl
 data/processed/m7/capability/stats.json
+data/processed/m4_sequence_eval/capability/
+data/processed/m5_sequence_eval/capability/
+data/processed/m7_sequence_eval/capability/
 data/processed/m7/skill/rerank_examples.jsonl
 data/processed/m7/skill/query_candidate_pools.jsonl
 data/processed/m7/skill/stats.json
@@ -1218,13 +1275,20 @@ data/processed/m7/skill/stats.json
   * `positives=135537`
   * `negatives=271074`
   * `queries_with_sequence=0`
+* 已新增 sequence-aware heldout 数据视图：
+  * 从 capability train split 中抽取带 `sequence_ids` 的 query。
+  * `data/processed/m4_sequence_eval/capability/`：`train=321107`，`sequence_dev=2000`，`sequence_test=5000`，`test=1100`。
+  * `data/processed/m5_sequence_eval/capability/`：`train=778957`，`sequence_dev=4966`，`sequence_test=12236`，`test=2577`。
+  * `data/processed/m7_sequence_eval/capability/`：`train=2379907`，`sequence_dev=15174`，`sequence_test=37333`，`test=7887`。
+  * 训练脚本已将 `sequence_dev` / `sequence_test` 视为 eval split，不会混入 train rows。
 * 已实现 M7 CLI：`prepare`、`train`、`predict`、`joint-train`、`joint-predict`、`evaluate`。
 * 已新增 joint ablation 两个默认关闭分支：
   * `--enable-shared-encoder`
   * `--enable-soft-code-distribution`
+* `scripts/run_m7_joint_ablations.sh` 支持用 `DATA_ROOT` / `OUTPUT_ROOT_BASE` 指定 sequence-aware 数据视图和输出目录。
 * 已实现 M7 单元测试，覆盖 hard negative 构造与 retrieval / sequence metrics。
 * 本地环境未安装 PyTorch，未训练 checkpoint；训练命令已写入 README，供云服务器执行。
-* 测试：`/opt/homebrew/anaconda3/bin/pytest` 通过，结果为 `14 passed`。
+* 测试：`/opt/homebrew/anaconda3/bin/pytest` 通过。
 
 ---
 

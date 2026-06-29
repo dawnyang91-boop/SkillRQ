@@ -68,6 +68,16 @@ data/processed/m4/capability/train_pairs.jsonl
 data/processed/m4/capability/stats.json
 ```
 
+如果要验证 sequence-aware 指标，建议额外上传：
+
+```text
+data/processed/m4_sequence_eval/capability/
+data/processed/m5_sequence_eval/capability/
+data/processed/m7_sequence_eval/capability/
+```
+
+这三个目录从 capability train split 中划出带 tool sequence 的 query 作为 `sequence_dev` / `sequence_test`，用于 First-Tool Accuracy、Transition Accuracy 和 Kendall-tau 等顺序指标。
+
 ### 1.3 不建议上传的内容
 
 ```text
@@ -221,6 +231,38 @@ has EmbeddingBag = False
 
 如果服务器只负责 M7 joint 消融，直接看 `4.4`。
 
+### 4.0 可选：构建 sequence-aware 评估视图
+
+如果本地尚未生成 sequence-aware 数据视图，可在服务器上先执行：
+
+```bash
+python3 -m skillrq m4 sequence-split \
+  --target capability \
+  --sequence-dev-size 2000 \
+  --sequence-test-size 5000 \
+  --seed 13
+
+python3 -m skillrq m5 prepare \
+  --target capability \
+  --m4-data-root data/processed/m4_sequence_eval/capability \
+  --output-root data/processed/m5_sequence_eval/capability \
+  --max-steps 6
+
+python3 -m skillrq m7 prepare \
+  --target capability \
+  --m4-data-root data/processed/m4_sequence_eval/capability \
+  --output-root data/processed/m7_sequence_eval/capability \
+  --negatives-per-positive 2
+```
+
+当前本地已生成的数据规模：
+
+```text
+M4 queries: train=321,107 sequence_dev=2,000 sequence_test=5,000 test=1,100
+M5 residual_examples: train=778,957 sequence_dev=4,966 sequence_test=12,236 test=2,577
+M7 rerank_examples: train=2,379,907 sequence_dev=15,174 sequence_test=37,333 test=7,887
+```
+
 ### 4.1 M4 Query-to-Code 训练
 
 ```bash
@@ -239,6 +281,71 @@ python3 -m skillrq m4 train \
   --swanlab-run-name m4-capability-query-to-code
 ```
 
+sequence-aware 评估视图训练：
+
+```bash
+python3 -m skillrq m4 train \
+  --target capability \
+  --data-root data/processed/m4_sequence_eval/capability \
+  --output-root runs/m4_query_to_code/capabilityrq/capability_sequence_eval \
+  --epochs 20 \
+  --batch-size 2048 \
+  --learning-rate 3e-4 \
+  --embedding-dim 512 \
+  --hidden-dim 1024 \
+  --device cuda \
+  --swanlab-project SkillRQ-M4 \
+  --swanlab-run-name m4-capability-sequence-eval
+```
+
+soft multi-path M4 训练：
+
+```bash
+python3 -m skillrq m4 train \
+  --target capability \
+  --model-kind soft-multipath \
+  --data-root data/processed/m4/capability \
+  --output-root runs/m4_query_to_code/soft_multipath/capability \
+  --epochs 20 \
+  --batch-size 512 \
+  --learning-rate 3e-4 \
+  --embedding-dim 512 \
+  --hidden-dim 1024 \
+  --code-embedding-dim 256 \
+  --hierarchy-weight 1.0 \
+  --contrastive-weight 1.0 \
+  --path-bce-weight 0.2 \
+  --contrastive-negative-count 512 \
+  --temperature 0.07 \
+  --device cuda \
+  --swanlab-project SkillRQ-M4 \
+  --swanlab-run-name m4-soft-multipath-capability
+```
+
+soft multi-path M4 的 sequence-aware 训练：
+
+```bash
+python3 -m skillrq m4 train \
+  --target capability \
+  --model-kind soft-multipath \
+  --data-root data/processed/m4_sequence_eval/capability \
+  --output-root runs/m4_query_to_code/soft_multipath/capability_sequence_eval \
+  --epochs 20 \
+  --batch-size 512 \
+  --learning-rate 3e-4 \
+  --embedding-dim 512 \
+  --hidden-dim 1024 \
+  --code-embedding-dim 256 \
+  --hierarchy-weight 1.0 \
+  --contrastive-weight 1.0 \
+  --path-bce-weight 0.2 \
+  --contrastive-negative-count 512 \
+  --temperature 0.07 \
+  --device cuda \
+  --swanlab-project SkillRQ-M4 \
+  --swanlab-run-name m4-soft-multipath-sequence-eval
+```
+
 M4 推理：
 
 ```bash
@@ -252,6 +359,60 @@ python3 -m skillrq m4 predict \
   --device cuda \
   --swanlab-project SkillRQ-M4 \
   --swanlab-run-name m4-capability-predict
+```
+
+M4 sequence-test 推理：
+
+```bash
+python3 -m skillrq m4 predict \
+  --target capability \
+  --data-root data/processed/m4_sequence_eval/capability \
+  --checkpoint-root runs/m4_query_to_code/capabilityrq/capability_sequence_eval \
+  --output-root runs/m4_query_to_code/predictions/capability_sequence_eval \
+  --top-n-paths 16 \
+  --candidate-budget 100 \
+  --split sequence_test \
+  --device cuda \
+  --swanlab-project SkillRQ-M4 \
+  --swanlab-run-name m4-capability-sequence-test-predict
+```
+
+soft multi-path M4 推理：
+
+```bash
+python3 -m skillrq m4 predict \
+  --target capability \
+  --model-kind soft-multipath \
+  --data-root data/processed/m4/capability \
+  --checkpoint-root runs/m4_query_to_code/soft_multipath/capability \
+  --output-root runs/m4_query_to_code/predictions/soft_multipath/capability \
+  --top-n-paths 16 \
+  --candidate-budget 100 \
+  --beam-width 8 \
+  --score-blend 0.65 \
+  --split test \
+  --device cuda \
+  --swanlab-project SkillRQ-M4 \
+  --swanlab-run-name m4-soft-multipath-predict
+```
+
+soft multi-path M4 的 sequence-test 推理：
+
+```bash
+python3 -m skillrq m4 predict \
+  --target capability \
+  --model-kind soft-multipath \
+  --data-root data/processed/m4_sequence_eval/capability \
+  --checkpoint-root runs/m4_query_to_code/soft_multipath/capability_sequence_eval \
+  --output-root runs/m4_query_to_code/predictions/soft_multipath/capability_sequence_eval \
+  --top-n-paths 16 \
+  --candidate-budget 100 \
+  --beam-width 8 \
+  --score-blend 0.65 \
+  --split sequence_test \
+  --device cuda \
+  --swanlab-project SkillRQ-M4 \
+  --swanlab-run-name m4-soft-multipath-sequence-test-predict
 ```
 
 M4 评估：
@@ -280,6 +441,24 @@ python3 -m skillrq m5 train \
   --swanlab-run-name m5-capability-coverage
 ```
 
+sequence-aware 评估视图训练：
+
+```bash
+python3 -m skillrq m5 train \
+  --target capability \
+  --data-root data/processed/m5_sequence_eval/capability \
+  --output-root runs/m5_residual_selector/capability_sequence_eval \
+  --epochs 20 \
+  --batch-size 2048 \
+  --learning-rate 3e-4 \
+  --embedding-dim 512 \
+  --hidden-dim 1024 \
+  --coverage-weight 1.0 \
+  --device cuda \
+  --swanlab-project SkillRQ-M5 \
+  --swanlab-run-name m5-capability-sequence-eval
+```
+
 M5 推理：
 
 ```bash
@@ -294,6 +473,23 @@ python3 -m skillrq m5 predict \
   --device cuda \
   --swanlab-project SkillRQ-M5 \
   --swanlab-run-name m5-capability-predict
+```
+
+M5 sequence-test 推理：
+
+```bash
+python3 -m skillrq m5 predict \
+  --target capability \
+  --m4-data-root data/processed/m4_sequence_eval/capability \
+  --checkpoint-root runs/m5_residual_selector/capability_sequence_eval \
+  --output-root runs/m5_residual_selector/predictions/capability_sequence_eval \
+  --max-steps 6 \
+  --top-n-paths 16 \
+  --candidates-per-step 20 \
+  --split sequence_test \
+  --device cuda \
+  --swanlab-project SkillRQ-M5 \
+  --swanlab-run-name m5-capability-sequence-test-predict
 ```
 
 M5 评估：
@@ -324,6 +520,26 @@ python3 -m skillrq m7 train \
   --swanlab-run-name m7-capability-reranker
 ```
 
+sequence-aware 评估视图训练：
+
+```bash
+python3 -m skillrq m7 train \
+  --target capability \
+  --data-root data/processed/m7_sequence_eval/capability \
+  --output-root runs/m7_reranker/capability_sequence_eval \
+  --epochs 10 \
+  --batch-size 2048 \
+  --learning-rate 3e-4 \
+  --embedding-dim 512 \
+  --hidden-dim 1024 \
+  --role-weight 0.2 \
+  --stage-weight 0.2 \
+  --order-weight 0.2 \
+  --device cuda \
+  --swanlab-project SkillRQ-M7 \
+  --swanlab-run-name m7-capability-sequence-eval
+```
+
 M7 offline 推理，输入建议使用 M5 predictions：
 
 ```bash
@@ -338,12 +554,37 @@ python3 -m skillrq m7 predict \
   --swanlab-run-name m7-capability-predict
 ```
 
+M7 sequence-test 推理：
+
+```bash
+python3 -m skillrq m7 predict \
+  --target capability \
+  --m4-data-root data/processed/m4_sequence_eval/capability \
+  --prediction-path runs/m5_residual_selector/predictions/capability_sequence_eval/predictions.jsonl \
+  --checkpoint-root runs/m7_reranker/capability_sequence_eval \
+  --output-root runs/m7_reranker/predictions/capability_sequence_eval \
+  --top-k 100 \
+  --device cuda \
+  --swanlab-project SkillRQ-M7 \
+  --swanlab-run-name m7-capability-sequence-test-predict
+```
+
 M7 offline 评估：
 
 ```bash
 python3 -m skillrq m7 evaluate \
   --prediction-path runs/m7_reranker/predictions/capability/reranked_predictions.jsonl \
   --output-path reports/tables/m7_tool_reranking.json \
+  --top-k 5,10,20,50,100 \
+  --set-metric-name tool_set_recall
+```
+
+M7 sequence-test 评估：
+
+```bash
+python3 -m skillrq m7 evaluate \
+  --prediction-path runs/m7_reranker/predictions/capability_sequence_eval/reranked_predictions.jsonl \
+  --output-path reports/tables/m7_sequence_test_reranking.json \
   --top-k 5,10,20,50,100 \
   --set-metric-name tool_set_recall
 ```
@@ -371,6 +612,15 @@ runs/m7_joint_reranker/capability/shared_encoder_soft_code
 
 ```bash
 EPOCHS=20 BATCH_SIZE=4096 DEVICE=cuda bash scripts/run_m7_joint_ablations.sh
+```
+
+运行 sequence-aware 评估视图下的四组 joint 消融：
+
+```bash
+DATA_ROOT=data/processed/m7_sequence_eval/capability \
+OUTPUT_ROOT_BASE=runs/m7_joint_reranker/capability_sequence_eval \
+EPOCHS=10 BATCH_SIZE=2048 DEVICE=cuda \
+bash scripts/run_m7_joint_ablations.sh
 ```
 
 首次在新实例上建议小 batch smoke test：
@@ -526,7 +776,53 @@ ls -lh data/processed/m4/capability/candidates.jsonl
 
 ---
 
-## 7. 建议执行顺序总结
+## 7. 下载结果后运行诊断实验
+
+当服务器完成 M4 / M5 / M7 / M7 joint 的训练、推理、评估后，将服务器的 `runs/` 和 `reports/` 下载回本地：
+
+```bash
+cd /Users/sihan/code/SkillRQ
+
+rsync -av \
+  -e "ssh -p ${SERVER_PORT}" \
+  "${SERVER_HOST}:${SERVER_DIR}/runs/" \
+  runs/
+
+rsync -av \
+  -e "ssh -p ${SERVER_PORT}" \
+  "${SERVER_HOST}:${SERVER_DIR}/reports/" \
+  reports/
+```
+
+然后在本地运行诊断：
+
+```bash
+python3 -m skillrq diagnostics run \
+  --target capability \
+  --top-k 5,10,20,50,100
+```
+
+输出目录：
+
+```text
+reports/diagnostics/capability/
+```
+
+核心报告：
+
+```text
+candidate_pool_upper_bounds.json       # observed vs oracle Recall/Completeness
+candidate_pool_failure_cases.jsonl     # candidate pool 没覆盖 gold 的失败样例
+codebook_diagnostics.json              # gold path 分散度、path 混杂度、query-code 弱对齐
+multi_positive_diagnostics.json        # 多 gold / 多 path / sequence 分布
+negative_sampling_diagnostics.json     # M7 hard negative 难度与 feature 差异
+sequence_chain_diagnostics.json        # sequence_ids 是否能进入评估链路
+diagnostics_summary.json               # 总入口
+```
+
+---
+
+## 8. 建议执行顺序总结
 
 新实例只跑 M7 joint 消融：
 

@@ -1,0 +1,77 @@
+{
+  "m4_data_root": "/root/autodl-tmp/data/processed/m4/capability",
+  "m4_queries": 203136,
+  "m4_queries_with_sequence_ids": 126332,
+  "prediction_sequence_diagnostics": {
+    "m4": {
+      "available": true,
+      "prediction_path": "/root/autodl-tmp/runs/m4_query_to_code/predictions/capability/predictions.jsonl",
+      "prediction_rows": 1100,
+      "rows_joinable_to_m4_sequence_ids": 0,
+      "rows_with_predicted_tool_order": 0,
+      "rows_with_sequence_ids_in_prediction": 0,
+      "sequence_eval_direct_ratio": 0.0,
+      "sequence_eval_possible_by_join_ratio": 0.0
+    },
+    "m5": {
+      "available": true,
+      "prediction_path": "/root/autodl-tmp/runs/m5_residual_selector/predictions/capability/predictions.jsonl",
+      "prediction_rows": 1100,
+      "rows_joinable_to_m4_sequence_ids": 0,
+      "rows_with_predicted_tool_order": 0,
+      "rows_with_sequence_ids_in_prediction": 0,
+      "sequence_eval_direct_ratio": 0.0,
+      "sequence_eval_possible_by_join_ratio": 0.0
+    },
+    "m7": {
+      "available": true,
+      "prediction_path": "/root/autodl-tmp/runs/m7_reranker/predictions/capability/reranked_predictions.jsonl",
+      "prediction_rows": 1100,
+      "rows_joinable_to_m4_sequence_ids": 0,
+      "rows_with_predicted_tool_order": 1100,
+      "rows_with_sequence_ids_in_prediction": 0,
+      "sequence_eval_direct_ratio": 0.0,
+      "sequence_eval_possible_by_join_ratio": 0.0
+    },
+    "m7_joint_joint_base": {
+      "available": true,
+      "prediction_path": "/root/autodl-tmp/runs/m7_joint_reranker/predictions/capability/joint_base/reranked_predictions.jsonl",
+      "prediction_rows": 1100,
+      "rows_joinable_to_m4_sequence_ids": 0,
+      "rows_with_predicted_tool_order": 1100,
+      "rows_with_sequence_ids_in_prediction": 0,
+      "sequence_eval_direct_ratio": 0.0,
+      "sequence_eval_possible_by_join_ratio": 0.0
+    },
+    "m7_joint_shared_encoder": {
+      "available": true,
+      "prediction_path": "/root/autodl-tmp/runs/m7_joint_reranker/predictions/capability/shared_encoder/reranked_predictions.jsonl",
+      "prediction_rows": 1100,
+      "rows_joinable_to_m4_sequence_ids": 0,
+      "rows_with_predicted_tool_order": 1100,
+      "rows_with_sequence_ids_in_prediction": 0,
+      "sequence_eval_direct_ratio": 0.0,
+      "sequence_eval_possible_by_join_ratio": 0.0
+    },
+    "m7_joint_shared_encoder_soft_code": {
+      "available": true,
+      "prediction_path": "/root/autodl-tmp/runs/m7_joint_reranker/predictions/capability/shared_encoder_soft_code/reranked_predictions.jsonl",
+      "prediction_rows": 1100,
+      "rows_joinable_to_m4_sequence_ids": 0,
+      "rows_with_predicted_tool_order": 1100,
+      "rows_with_sequence_ids_in_prediction": 0,
+      "sequence_eval_direct_ratio": 0.0,
+      "sequence_eval_possible_by_join_ratio": 0.0
+    },
+    "m7_joint_soft_code_distribution": {
+      "available": true,
+      "prediction_path": "/root/autodl-tmp/runs/m7_joint_reranker/predictions/capability/soft_code_distribution/reranked_predictions.jsonl",
+      "prediction_rows": 1100,
+      "rows_joinable_to_m4_sequence_ids": 0,
+      "rows_with_predicted_tool_order": 1100,
+      "rows_with_sequence_ids_in_prediction": 0,
+      "sequence_eval_direct_ratio": 0.0,
+      "sequence_eval_possible_by_join_ratio": 0.0
+    }
+  }
+}
