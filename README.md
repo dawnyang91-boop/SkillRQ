@@ -472,6 +472,13 @@ soft multi-path M4 的 SwanLab 会额外记录 `train/hierarchy_loss`、`train/c
 
 M5 在 M4 code paths 基础上训练 residual selector。它不再一次性给出 flat code list，而是逐步预测多个 code paths，并用 coverage supervision 约束每一步尽量覆盖新的 gold tools / skills。
 
+当前 M5 有两种显式分支：
+
+```text
+--model-kind coverage   # 旧版 residual candidate coverage baseline
+--model-kind code-plan  # 新版 residual code path planning 主分支
+```
+
 准备 capability-level coverage supervision 数据：
 
 ```bash
@@ -510,6 +517,20 @@ skill:      queries=68,256  residual_examples=135,185 avg_steps_per_query=1.9806
 ```text
 train=778,957 sequence_dev=4,966 sequence_test=12,236 test=2,577
 ```
+
+基于 soft multi-path M4 predictions 准备 residual code path planning 数据：
+
+```bash
+python3 -m skillrq m5 prepare \
+  --target capability \
+  --model-kind code-plan \
+  --m4-data-root data/processed/m4_sequence_eval/capability \
+  --m4-prediction-path runs/m4_query_to_code/predictions/soft_multipath/capability_sequence_eval/predictions.jsonl \
+  --output-root data/processed/m5_code_plan/capability_sequence_eval \
+  --max-steps 6
+```
+
+如果暂时没有 M4 predictions，可以不传 `--m4-prediction-path`，脚本会用 gold code paths 构造 oracle planning 数据，适合先做训练 smoke test。
 
 训练 capability-level residual selector：
 
@@ -561,6 +582,27 @@ python3 -m skillrq m5 train \
   --swanlab-run-name m5-skill-coverage
 ```
 
+训练 residual code path planner：
+
+```bash
+python3 -m skillrq m5 train \
+  --target capability \
+  --model-kind code-plan \
+  --data-root data/processed/m5_code_plan/capability_sequence_eval \
+  --output-root runs/m5_code_path_planner/capability_sequence_eval \
+  --epochs 20 \
+  --batch-size 2048 \
+  --learning-rate 3e-4 \
+  --embedding-dim 512 \
+  --hidden-dim 1024 \
+  --coverage-weight 1.0 \
+  --role-weight 0.3 \
+  --stop-weight 0.3 \
+  --device cuda \
+  --swanlab-project SkillRQ-M5 \
+  --swanlab-run-name m5-code-path-planner-sequence-eval
+```
+
 用 M5 模型预测 residual code paths 并检索 candidates：
 
 ```bash
@@ -577,6 +619,38 @@ python3 -m skillrq m5 predict \
   --swanlab-run-name m5-capability-predict
 ```
 
+使用 residual code path planner 输出 `code_plan`：
+
+```bash
+python3 -m skillrq m5 predict \
+  --target capability \
+  --model-kind code-plan \
+  --m4-data-root data/processed/m4_sequence_eval/capability \
+  --m4-prediction-path runs/m4_query_to_code/predictions/soft_multipath/capability_sequence_eval/predictions.jsonl \
+  --checkpoint-root runs/m5_code_path_planner/capability_sequence_eval \
+  --output-root runs/m5_code_path_planner/predictions/capability_sequence_eval \
+  --max-steps 6 \
+  --top-n-paths 16 \
+  --candidates-per-step 20 \
+  --stop-threshold 0.55 \
+  --split sequence_test \
+  --device cuda \
+  --swanlab-project SkillRQ-M5 \
+  --swanlab-run-name m5-code-path-plan-sequence-test
+```
+
+`code-plan` 推理输出会包含：
+
+```text
+code_plan[].code_path
+code_plan[].role
+code_plan[].purpose
+code_plan[].expected_coverage_gain
+code_plan[].stop_probability
+```
+
+同时保留 `residual_code_paths` 字段，方便后续 M7 沿用现有 prediction 输入格式。
+
 评估 M5 coverage prediction：
 
 ```bash
@@ -592,11 +666,15 @@ M5 主要输出：
 ```text
 data/processed/m5/capability/
 data/processed/m5/skill/
+data/processed/m5_code_plan/
 runs/m5_residual_selector/
+runs/m5_code_path_planner/
 reports/tables/m5_coverage_supervision_capability.json
 ```
 
 SwanLab 会记录每个 epoch 的 `train/loss`、`train/code_loss`、`train/coverage_loss`、`dev/loss`、`dev/code_loss`、`dev/coverage_loss`、`dev/l1_accuracy`、`dev/l2_accuracy`、`dev/l3_accuracy`、`dev/l4_accuracy`、`dev/path_exact_match`，以及推理阶段的 `predict/queries`、`predict/avg_steps`。
+
+`code-plan` 分支额外记录 `train/role_loss`、`train/stop_loss`、`dev/role_accuracy`、`dev/stop_accuracy`，用于观察 role planning 和 learned stopping 是否有效。
 
 ### 9. 准备并训练 M7 Role-Aware and Sequence-Aware Reranker
 

@@ -23,6 +23,7 @@ from .m4.soft import predict_soft_multipath_codes, train_soft_multipath_code_pre
 from .m4.train import train_capabilityrq
 from .m5 import prepare_m5_data
 from .m5.evaluate import evaluate_m5_predictions
+from .m5.planning import prepare_code_path_planning_data, predict_code_path_plan, train_code_path_planner
 from .m5.predict import predict_residual_paths
 from .m5.train import train_residual_selector
 from .m7 import prepare_m7_data
@@ -285,7 +286,9 @@ def build_parser() -> argparse.ArgumentParser:
     m5_subparsers = m5_parser.add_subparsers(dest="m5_command")
     m5_prepare_parser = m5_subparsers.add_parser("prepare", help="Prepare residual coverage supervision data.")
     m5_prepare_parser.add_argument("--target", choices=["capability", "skill"], required=True)
+    m5_prepare_parser.add_argument("--model-kind", choices=["coverage", "code-plan"], default="coverage")
     m5_prepare_parser.add_argument("--m4-data-root", type=Path, default=None)
+    m5_prepare_parser.add_argument("--m4-prediction-path", type=Path, default=None)
     m5_prepare_parser.add_argument("--output-root", type=Path, default=None)
     m5_prepare_parser.add_argument("--max-steps", type=int, default=6)
     m5_prepare_parser.add_argument("--limit-queries", type=int, default=None)
@@ -293,6 +296,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     m5_train_parser = m5_subparsers.add_parser("train", help="Train residual selector with coverage supervision.")
     m5_train_parser.add_argument("--target", choices=["capability", "skill"], required=True)
+    m5_train_parser.add_argument("--model-kind", choices=["coverage", "code-plan"], default="coverage")
     m5_train_parser.add_argument("--data-root", type=Path, default=None)
     m5_train_parser.add_argument("--output-root", type=Path, default=None)
     m5_train_parser.add_argument("--epochs", type=int, default=10)
@@ -301,6 +305,8 @@ def build_parser() -> argparse.ArgumentParser:
     m5_train_parser.add_argument("--embedding-dim", type=int, default=512)
     m5_train_parser.add_argument("--hidden-dim", type=int, default=1024)
     m5_train_parser.add_argument("--coverage-weight", type=float, default=1.0)
+    m5_train_parser.add_argument("--role-weight", type=float, default=0.3)
+    m5_train_parser.add_argument("--stop-weight", type=float, default=0.3)
     m5_train_parser.add_argument("--max-vocab-size", type=int, default=200000)
     m5_train_parser.add_argument("--device", default=None)
     m5_train_parser.add_argument("--swanlab-project", default="SkillRQ-M5")
@@ -310,12 +316,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     m5_predict_parser = m5_subparsers.add_parser("predict", help="Predict residual code paths.")
     m5_predict_parser.add_argument("--target", choices=["capability", "skill"], required=True)
+    m5_predict_parser.add_argument("--model-kind", choices=["coverage", "code-plan"], default="coverage")
     m5_predict_parser.add_argument("--m4-data-root", type=Path, default=None)
+    m5_predict_parser.add_argument("--m4-prediction-path", type=Path, default=None)
     m5_predict_parser.add_argument("--checkpoint-root", type=Path, required=True)
     m5_predict_parser.add_argument("--output-root", type=Path, default=None)
     m5_predict_parser.add_argument("--max-steps", type=int, default=6)
     m5_predict_parser.add_argument("--top-n-paths", type=int, default=8)
     m5_predict_parser.add_argument("--candidates-per-step", type=int, default=20)
+    m5_predict_parser.add_argument("--stop-threshold", type=float, default=0.55)
     m5_predict_parser.add_argument("--split", default=None)
     m5_predict_parser.add_argument("--device", default=None)
     m5_predict_parser.add_argument("--swanlab-project", default="SkillRQ-M5")
@@ -635,51 +644,98 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.m5_command == "prepare":
             paths = load_paths_config(args.paths)
             m4_data_root = args.m4_data_root or paths.processed_root / "m4" / args.target
-            output_root = args.output_root or paths.processed_root / "m5" / args.target
-            stats = prepare_m5_data(
-                m4_data_root=m4_data_root,
-                output_root=output_root,
-                max_steps=args.max_steps,
-                limit_queries=args.limit_queries,
-            )
+            if args.model_kind == "code-plan":
+                output_root = args.output_root or paths.processed_root / "m5_code_plan" / args.target
+                stats = prepare_code_path_planning_data(
+                    m4_data_root=m4_data_root,
+                    output_root=output_root,
+                    m4_prediction_path=args.m4_prediction_path,
+                    max_steps=args.max_steps,
+                    limit_queries=args.limit_queries,
+                )
+            else:
+                output_root = args.output_root or paths.processed_root / "m5" / args.target
+                stats = prepare_m5_data(
+                    m4_data_root=m4_data_root,
+                    output_root=output_root,
+                    max_steps=args.max_steps,
+                    limit_queries=args.limit_queries,
+                )
             print(json.dumps(stats, ensure_ascii=False, indent=2, sort_keys=True))
             return 0
         if args.m5_command == "train":
             paths = load_paths_config(args.paths)
-            data_root = args.data_root or paths.processed_root / "m5" / args.target
-            output_root = args.output_root or paths.run_root / "m5_residual_selector" / args.target
-            summary = train_residual_selector(
-                data_root=data_root,
-                output_root=output_root,
-                epochs=args.epochs,
-                batch_size=args.batch_size,
-                learning_rate=args.learning_rate,
-                embedding_dim=args.embedding_dim,
-                hidden_dim=args.hidden_dim,
-                coverage_weight=args.coverage_weight,
-                max_vocab_size=args.max_vocab_size,
-                device=args.device,
-                swanlab_project=None if args.disable_swanlab else args.swanlab_project,
-                swanlab_run_name=args.swanlab_run_name,
-            )
+            if args.model_kind == "code-plan":
+                data_root = args.data_root or paths.processed_root / "m5_code_plan" / args.target
+                output_root = args.output_root or paths.run_root / "m5_code_path_planner" / args.target
+                summary = train_code_path_planner(
+                    data_root=data_root,
+                    output_root=output_root,
+                    epochs=args.epochs,
+                    batch_size=args.batch_size,
+                    learning_rate=args.learning_rate,
+                    embedding_dim=args.embedding_dim,
+                    hidden_dim=args.hidden_dim,
+                    coverage_weight=args.coverage_weight,
+                    role_weight=args.role_weight,
+                    stop_weight=args.stop_weight,
+                    max_vocab_size=args.max_vocab_size,
+                    device=args.device,
+                    swanlab_project=None if args.disable_swanlab else args.swanlab_project,
+                    swanlab_run_name=args.swanlab_run_name,
+                )
+            else:
+                data_root = args.data_root or paths.processed_root / "m5" / args.target
+                output_root = args.output_root or paths.run_root / "m5_residual_selector" / args.target
+                summary = train_residual_selector(
+                    data_root=data_root,
+                    output_root=output_root,
+                    epochs=args.epochs,
+                    batch_size=args.batch_size,
+                    learning_rate=args.learning_rate,
+                    embedding_dim=args.embedding_dim,
+                    hidden_dim=args.hidden_dim,
+                    coverage_weight=args.coverage_weight,
+                    max_vocab_size=args.max_vocab_size,
+                    device=args.device,
+                    swanlab_project=None if args.disable_swanlab else args.swanlab_project,
+                    swanlab_run_name=args.swanlab_run_name,
+                )
             print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
             return 0
         if args.m5_command == "predict":
             paths = load_paths_config(args.paths)
             m4_data_root = args.m4_data_root or paths.processed_root / "m4" / args.target
-            output_root = args.output_root or paths.run_root / "m5_residual_selector" / "predictions" / args.target
-            summary = predict_residual_paths(
-                data_root=m4_data_root,
-                checkpoint_root=args.checkpoint_root,
-                output_root=output_root,
-                max_steps=args.max_steps,
-                top_n_paths=args.top_n_paths,
-                candidates_per_step=args.candidates_per_step,
-                split=args.split,
-                device=args.device,
-                swanlab_project=None if args.disable_swanlab else args.swanlab_project,
-                swanlab_run_name=args.swanlab_run_name,
-            )
+            if args.model_kind == "code-plan":
+                output_root = args.output_root or paths.run_root / "m5_code_path_planner" / "predictions" / args.target
+                summary = predict_code_path_plan(
+                    m4_data_root=m4_data_root,
+                    checkpoint_root=args.checkpoint_root,
+                    output_root=output_root,
+                    m4_prediction_path=args.m4_prediction_path,
+                    max_steps=args.max_steps,
+                    top_n_paths=args.top_n_paths,
+                    candidates_per_step=args.candidates_per_step,
+                    stop_threshold=args.stop_threshold,
+                    split=args.split,
+                    device=args.device,
+                    swanlab_project=None if args.disable_swanlab else args.swanlab_project,
+                    swanlab_run_name=args.swanlab_run_name,
+                )
+            else:
+                output_root = args.output_root or paths.run_root / "m5_residual_selector" / "predictions" / args.target
+                summary = predict_residual_paths(
+                    data_root=m4_data_root,
+                    checkpoint_root=args.checkpoint_root,
+                    output_root=output_root,
+                    max_steps=args.max_steps,
+                    top_n_paths=args.top_n_paths,
+                    candidates_per_step=args.candidates_per_step,
+                    split=args.split,
+                    device=args.device,
+                    swanlab_project=None if args.disable_swanlab else args.swanlab_project,
+                    swanlab_run_name=args.swanlab_run_name,
+                )
             print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
             return 0
         if args.m5_command == "evaluate":

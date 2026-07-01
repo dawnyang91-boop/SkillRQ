@@ -827,26 +827,38 @@ P(code_path | q)
 
 ---
 
-### M5: Residual Multi-Code Path Selector with Coverage Supervision [已完成工程实现，待云端训练]
+### M5: Residual Code Path Planning with Coverage Supervision [已完成工程实现，待云端训练]
 
 目标：
 
-* 将 M4 的 one-shot query-to-code prediction 扩展为 residual multi-code path selection。
-* 每一步根据 `query + residual_state` 预测下一个 code path，使新路径优先覆盖尚未覆盖的 gold tools / skills。
-* 显式学习 `coverage_gain`，避免多个 code paths 重复解释同一个 dominant capability。
+* 将 M4 的 one-shot query-to-code prediction 扩展为 residual code path planning。
+* 保留旧版 `--model-kind coverage` 作为 residual candidate coverage baseline。
+* 新增 `--model-kind code-plan` 作为主分支：每一步根据 query、M4 predicted code paths、已选 code paths、已覆盖 role / operation / schema constraint，预测下一条 plan code path。
+* 显式学习 `coverage_gain`、`role` 与 `stop_probability`，避免多个 code paths 重复解释同一个 dominant capability，并支持 learned stopping。
 * Tool/API-level 作为主实验；SkillRet skill-level 作为副实验和 anti-redundancy 验证。
 
 核心流程：
 
 ```text
 query q
-covered_0 = empty
+predicted_paths = M4(q)
+selected_paths_0 = empty
+covered_roles_0 = empty
+covered_operations_0 = empty
+covered_schema_constraints_0 = empty
 
 for step t in 1..T:
-  residual_state_t = summarize(covered_{t-1})
-  path_t, coverage_gain_t = selector(q, residual_state_t)
-  candidates_t = retrieve_by_code_path(path_t)
-  covered_t = covered_{t-1} union candidates_t
+  planner_state_t = summarize(
+    q,
+    predicted_paths,
+    selected_paths_{t-1},
+    covered_roles_{t-1},
+    covered_operations_{t-1},
+    covered_schema_constraints_{t-1}
+  )
+  path_t, role_t, coverage_gain_t, stop_t = planner(planner_state_t)
+  if stop_t: break
+  selected_paths_t = selected_paths_{t-1} union path_t
 ```
 
 训练监督构造：
@@ -860,22 +872,29 @@ for step t in 1..T:
 query_id
 query
 step_index
-residual_state
+planner_state
+predicted_code_paths
+selected_code_paths_before
+covered_roles
+covered_operations
+covered_schema_constraints
 target_ids
 semantic_id
 code_path
-role_hint
-coverage_gain
-normalized_coverage_gain
-covered_before
-remaining_after
+role
+purpose
+expected_coverage_gain
+stop_label
 ```
 
 模型与损失：
 
 ```text
-L_m5 = CE(l1) + CE(l2) + CE(l3) + CE(l4)
-     + coverage_weight * MSE(sigmoid(predicted_coverage_gain), normalized_coverage_gain)
+L_m5_code_plan =
+    CE(l1) + CE(l2) + CE(l3) + CE(l4)
+  + coverage_weight * MSE(sigmoid(predicted_coverage_gain), expected_coverage_gain)
+  + role_weight * CE(role)
+  + stop_weight * BCE(stop_probability, stop_label)
 ```
 
 SwanLab 记录：
@@ -884,24 +903,25 @@ SwanLab 记录：
 train/loss
 train/code_loss
 train/coverage_loss
+train/role_loss
+train/stop_loss
 dev/loss
 dev/code_loss
 dev/coverage_loss
-dev/l1_accuracy
-dev/l2_accuracy
-dev/l3_accuracy
-dev/l4_accuracy
 dev/path_exact_match
+dev/role_accuracy
+dev/stop_accuracy
 predict/queries
 predict/avg_steps
 ```
 
 推理策略：
 
-* 逐步预测 residual code path，而不是一次性输出 flat top-k。
+* 逐步预测 residual code path plan，而不是一次性输出 flat top-k。
 * 每一步对重复 `semantic_id` 做跳过。
-* 检索候选时加入 novelty bonus，已覆盖候选会受到惩罚。
-* 当 gold set 已全部覆盖或达到 `max_steps` 时停止。
+* 输出 `code_plan[]`，包括 `code_path`、`role`、`purpose`、`expected_coverage_gain`、`stop_probability`。
+* 同时保留 `residual_code_paths` 字段，兼容后续 M7 prediction 输入。
+* 当 stop probability 超过阈值或达到 `max_steps` 时停止。
 
 评估指标：
 
@@ -918,10 +938,13 @@ Tool Set Recall@K / Skill Set Recall@K
 
 ```bash
 python3 -m skillrq m5 prepare --target capability
+python3 -m skillrq m5 prepare --target capability --model-kind code-plan --m4-prediction-path runs/m4_query_to_code/predictions/soft_multipath/capability_sequence_eval/predictions.jsonl
 python3 -m skillrq m5 prepare --target skill
 
 python3 -m skillrq m5 train --target capability --device cuda
+python3 -m skillrq m5 train --target capability --model-kind code-plan --device cuda
 python3 -m skillrq m5 predict --target capability --checkpoint-root runs/m5_residual_selector/capability --device cuda
+python3 -m skillrq m5 predict --target capability --model-kind code-plan --checkpoint-root runs/m5_code_path_planner/capability_sequence_eval --m4-prediction-path runs/m4_query_to_code/predictions/soft_multipath/capability_sequence_eval/predictions.jsonl --device cuda
 python3 -m skillrq m5 evaluate --prediction-path runs/m5_residual_selector/predictions/capability/predictions.jsonl --output-path reports/tables/m5_coverage_supervision_capability.json
 ```
 
@@ -932,11 +955,15 @@ skillrq/m5/data.py
 skillrq/m5/model.py
 skillrq/m5/train.py
 skillrq/m5/predict.py
+skillrq/m5/planning.py
 skillrq/m5/evaluate.py
 
 data/processed/m5/capability/residual_examples.jsonl
 data/processed/m5/capability/query_residual_plans.jsonl
 data/processed/m5/capability/stats.json
+data/processed/m5_code_plan/{target}/code_plan_examples.jsonl
+data/processed/m5_code_plan/{target}/query_code_plans.jsonl
+data/processed/m5_code_plan/{target}/stats.json
 data/processed/m5/skill/residual_examples.jsonl
 data/processed/m5/skill/query_residual_plans.jsonl
 data/processed/m5/skill/stats.json
@@ -957,7 +984,11 @@ data/processed/m5/skill/stats.json
   * `avg_steps_per_query=1.9806`
   * `avg_coverage_gain=1.0026`
 * 已实现 M5 CLI：`prepare`、`train`、`predict`、`evaluate`。
-* 已实现 M5 单元测试，覆盖 residual oracle 构造与 coverage metrics。
+* 已新增 code-plan 显式分支：
+  * `python3 -m skillrq m5 prepare --model-kind code-plan`
+  * `python3 -m skillrq m5 train --model-kind code-plan`
+  * `python3 -m skillrq m5 predict --model-kind code-plan`
+* 已实现 M5 单元测试，覆盖 residual oracle 构造、code path planning 数据构造与 coverage metrics。
 * 本地环境未安装 PyTorch，未训练 checkpoint；训练命令已写入 README，供云服务器执行。
 * 测试：`/opt/homebrew/anaconda3/bin/pytest` 通过，结果为 `12 passed`。
 

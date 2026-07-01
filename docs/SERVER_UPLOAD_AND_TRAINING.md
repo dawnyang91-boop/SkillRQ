@@ -98,9 +98,9 @@ reports/              # 除非需要迁移已有报告
 先设置服务器变量：
 
 ```bash
-export SERVER_PORT=47046
-export SERVER_HOST=root@connect.nmb2.seetacloud.com
-export SERVER_DIR=/root/autodl-tmp
+export SERVER_PORT=33530
+export SERVER_HOST=root@i-1.gpushare.com
+export SERVER_DIR=/hy-tmp
 ```
 
 如果新实例 host / port 变化，只改上面三个变量。
@@ -427,6 +427,20 @@ python3 -m skillrq m4 evaluate \
 
 ### 4.2 M5 Residual Selector 训练
 
+如果要训练新版 residual code path planner，先基于 soft multi-path M4 predictions 准备 M5 code-plan 数据：
+
+```bash
+python3 -m skillrq m5 prepare \
+  --target capability \
+  --model-kind code-plan \
+  --m4-data-root data/processed/m4_sequence_eval/capability \
+  --m4-prediction-path runs/m4_query_to_code/predictions/soft_multipath/capability_sequence_eval/predictions.jsonl \
+  --output-root data/processed/m5_code_plan/capability_sequence_eval \
+  --max-steps 6
+```
+
+如果只想先跑 oracle planning smoke test，可以去掉 `--m4-prediction-path`。
+
 ```bash
 python3 -m skillrq m5 train \
   --target capability \
@@ -457,6 +471,27 @@ python3 -m skillrq m5 train \
   --device cuda \
   --swanlab-project SkillRQ-M5 \
   --swanlab-run-name m5-capability-sequence-eval
+```
+
+新版 code path planner 训练：
+
+```bash
+python3 -m skillrq m5 train \
+  --target capability \
+  --model-kind code-plan \
+  --data-root data/processed/m5_code_plan/capability_sequence_eval \
+  --output-root runs/m5_code_path_planner/capability_sequence_eval \
+  --epochs 20 \
+  --batch-size 2048 \
+  --learning-rate 3e-4 \
+  --embedding-dim 512 \
+  --hidden-dim 1024 \
+  --coverage-weight 1.0 \
+  --role-weight 0.3 \
+  --stop-weight 0.3 \
+  --device cuda \
+  --swanlab-project SkillRQ-M5 \
+  --swanlab-run-name m5-code-path-planner-sequence-eval
 ```
 
 M5 推理：
@@ -490,6 +525,26 @@ python3 -m skillrq m5 predict \
   --device cuda \
   --swanlab-project SkillRQ-M5 \
   --swanlab-run-name m5-capability-sequence-test-predict
+```
+
+新版 code path planner sequence-test 推理：
+
+```bash
+python3 -m skillrq m5 predict \
+  --target capability \
+  --model-kind code-plan \
+  --m4-data-root data/processed/m4_sequence_eval/capability \
+  --m4-prediction-path runs/m4_query_to_code/predictions/soft_multipath/capability_sequence_eval/predictions.jsonl \
+  --checkpoint-root runs/m5_code_path_planner/capability_sequence_eval \
+  --output-root runs/m5_code_path_planner/predictions/capability_sequence_eval \
+  --max-steps 6 \
+  --top-n-paths 16 \
+  --candidates-per-step 20 \
+  --stop-threshold 0.55 \
+  --split sequence_test \
+  --device cuda \
+  --swanlab-project SkillRQ-M5 \
+  --swanlab-run-name m5-code-path-plan-sequence-test
 ```
 
 M5 评估：

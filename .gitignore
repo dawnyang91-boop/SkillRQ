@@ -4,6 +4,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .venv/
+
 venv/
 build/
 dist/
@@ -25,3 +26,4 @@ reports/figures/*
 reports/cases/*
 !reports/cases/.gitkeep
 
+*.zip
