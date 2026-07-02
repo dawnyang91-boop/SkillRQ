@@ -1,5 +1,6 @@
 from skillrq.m7 import prepare_m7_data
 from skillrq.m7.evaluate import evaluate_reranked_predictions
+from skillrq.m7.train import _code_aware_text
 from skillrq.utils.io import read_jsonl, write_jsonl
 
 
@@ -21,7 +22,30 @@ def test_prepare_m7_data_builds_positive_and_hard_negative_examples(tmp_path):
     positive_examples = [row for row in examples if row["label"] == 1]
     assert positive_examples[0]["stage_label"] == "FIRST"
     assert positive_examples[1]["stage_label"] == "FINAL"
+    assert "code_explanation" in positive_examples[0]
+    assert "candidate_schema" in positive_examples[0]
     assert set(pools[0]["candidate_pool_ids"]) >= {"tool_a", "tool_b", "tool_c"}
+
+
+def test_code_aware_text_contains_code_and_prompt_support_fields():
+    row = {
+        "query": "create a schedule after authentication",
+        "candidate_name": "Create",
+        "candidate_text": "Create schedule API",
+        "matched_code_path": ["A", "Create", "FINALIZE", "IO"],
+        "code_path": ["A", "Create", "FINALIZE", "IO"],
+        "code_explanation": "code path represents final schedule creation",
+        "candidate_schema": "title time location",
+        "role_label": "FINALIZE",
+        "features": {"coverage_gain_score": 0.5, "matched_levels": 1.0},
+    }
+
+    text = _code_aware_text(row)
+
+    assert "[Predicted Code Path]" in text
+    assert "[Code Path Explanation]" in text
+    assert "[Candidate Schema]" in text
+    assert "[Coverage State]" in text
 
 
 def test_evaluate_m7_predictions_reports_retrieval_and_sequence_metrics(tmp_path):

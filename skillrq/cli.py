@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Sequence
 
 from . import __version__
+from .agent_sim import evaluate_tool_call_plans, run_vllm_tool_call_planning, simulate_mock_tool_calls
 from .capability import build_capability_processed_data
 from .codebook import build_m3_codebooks
 from .codebook.runner import DEFAULT_M3_DATASETS
@@ -32,6 +33,7 @@ from .m7.joint_predict import predict_joint_reranked_capabilities
 from .m7.joint_train import train_joint_reranker
 from .m7.predict import predict_reranked_capabilities
 from .m7.train import train_reranker
+from .prompting import build_code_guided_prompts
 from .retrieval import run_m2_baselines
 from .retrieval.runner import DEFAULT_DATASETS, DEFAULT_METHODS, DEFAULT_TOP_K
 
@@ -330,6 +332,8 @@ def build_parser() -> argparse.ArgumentParser:
     m5_predict_parser.add_argument("--swanlab-project", default="SkillRQ-M5")
     m5_predict_parser.add_argument("--swanlab-run-name", default=None)
     m5_predict_parser.add_argument("--disable-swanlab", action="store_true")
+    m5_predict_parser.add_argument("--enable-exact-first-retrieval", action="store_true")
+    m5_predict_parser.add_argument("--disable-m4-candidate-prior", action="store_true")
     m5_predict_parser.add_argument("--paths", type=Path, default=None)
 
     m5_eval_parser = m5_subparsers.add_parser("evaluate", help="Evaluate residual coverage predictions.")
@@ -351,6 +355,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     m7_train_parser = m7_subparsers.add_parser("train", help="Train M7 reranker.")
     m7_train_parser.add_argument("--target", choices=["capability", "skill"], required=True)
+    m7_train_parser.add_argument("--model-kind", choices=["standard", "code-aware"], default="standard")
     m7_train_parser.add_argument("--data-root", type=Path, default=None)
     m7_train_parser.add_argument("--output-root", type=Path, default=None)
     m7_train_parser.add_argument("--epochs", type=int, default=10)
@@ -362,6 +367,10 @@ def build_parser() -> argparse.ArgumentParser:
     m7_train_parser.add_argument("--role-weight", type=float, default=0.2)
     m7_train_parser.add_argument("--stage-weight", type=float, default=0.2)
     m7_train_parser.add_argument("--order-weight", type=float, default=0.2)
+    m7_train_parser.add_argument("--code-consistency-weight", type=float, default=0.3)
+    m7_train_parser.add_argument("--schema-weight", type=float, default=0.2)
+    m7_train_parser.add_argument("--coverage-gain-weight", type=float, default=0.2)
+    m7_train_parser.add_argument("--prompt-usefulness-weight", type=float, default=0.3)
     m7_train_parser.add_argument("--device", default=None)
     m7_train_parser.add_argument("--swanlab-project", default="SkillRQ-M7")
     m7_train_parser.add_argument("--swanlab-run-name", default=None)
@@ -397,6 +406,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     m7_predict_parser = m7_subparsers.add_parser("predict", help="Rerank M4/M5 candidate predictions.")
     m7_predict_parser.add_argument("--target", choices=["capability", "skill"], required=True)
+    m7_predict_parser.add_argument("--model-kind", choices=["standard", "code-aware"], default=None)
     m7_predict_parser.add_argument("--prediction-path", type=Path, required=True)
     m7_predict_parser.add_argument("--m4-data-root", type=Path, default=None)
     m7_predict_parser.add_argument("--checkpoint-root", type=Path, required=True)
@@ -426,6 +436,45 @@ def build_parser() -> argparse.ArgumentParser:
     m7_eval_parser.add_argument("--output-path", type=Path, required=True)
     m7_eval_parser.add_argument("--top-k", default="5,10,20,50,100")
     m7_eval_parser.add_argument("--set-metric-name", default="tool_set_recall")
+
+    prompt_parser = subparsers.add_parser("prompt", help="Build LLM agent planning prompts.")
+    prompt_subparsers = prompt_parser.add_subparsers(dest="prompt_command")
+    prompt_build_parser = prompt_subparsers.add_parser("build", help="Build code-path-guided planning prompts.")
+    prompt_build_parser.add_argument("--prediction-path", type=Path, required=True)
+    prompt_build_parser.add_argument("--m5-prediction-path", type=Path, default=None)
+    prompt_build_parser.add_argument("--output-root", type=Path, required=True)
+    prompt_build_parser.add_argument("--top-tools-per-step", type=int, default=3)
+    prompt_build_parser.add_argument("--max-steps", type=int, default=6)
+    prompt_build_parser.add_argument("--hide-scores", action="store_true")
+
+    agent_sim_parser = subparsers.add_parser("agent-sim", help="Simulate and evaluate LLM tool-use plans.")
+    agent_sim_subparsers = agent_sim_parser.add_subparsers(dest="agent_sim_command")
+    agent_sim_mock_parser = agent_sim_subparsers.add_parser("mock", help="Run prompt-grounded mock tool-call simulation.")
+    agent_sim_mock_parser.add_argument("--prompt-record-path", type=Path, required=True)
+    agent_sim_mock_parser.add_argument("--output-root", type=Path, required=True)
+    agent_sim_mock_parser.add_argument("--max-calls", type=int, default=6)
+    agent_sim_mock_parser.add_argument("--tools-per-step", type=int, default=1)
+
+    agent_sim_vllm_parser = agent_sim_subparsers.add_parser("vllm", help="Run vLLM tool-call planning inference.")
+    agent_sim_vllm_parser.add_argument("--prompt-record-path", type=Path, required=True)
+    agent_sim_vllm_parser.add_argument("--output-root", type=Path, required=True)
+    agent_sim_vllm_parser.add_argument("--model", required=True)
+    agent_sim_vllm_parser.add_argument("--tensor-parallel-size", type=int, default=1)
+    agent_sim_vllm_parser.add_argument("--dtype", default="auto")
+    agent_sim_vllm_parser.add_argument("--gpu-memory-utilization", type=float, default=0.90)
+    agent_sim_vllm_parser.add_argument("--max-model-len", type=int, default=None)
+    agent_sim_vllm_parser.add_argument("--trust-remote-code", action="store_true")
+    agent_sim_vllm_parser.add_argument("--temperature", type=float, default=0.0)
+    agent_sim_vllm_parser.add_argument("--top-p", type=float, default=1.0)
+    agent_sim_vllm_parser.add_argument("--max-tokens", type=int, default=512)
+    agent_sim_vllm_parser.add_argument("--batch-size", type=int, default=32)
+    agent_sim_vllm_parser.add_argument("--limit", type=int, default=None)
+    agent_sim_vllm_parser.add_argument("--seed", type=int, default=0)
+
+    agent_sim_eval_parser = agent_sim_subparsers.add_parser("evaluate", help="Evaluate simulated tool-call plans.")
+    agent_sim_eval_parser.add_argument("--plan-path", type=Path, required=True)
+    agent_sim_eval_parser.add_argument("--output-path", type=Path, required=True)
+    agent_sim_eval_parser.add_argument("--top-k", default="1,3,5,10")
 
     diagnostics_parser = subparsers.add_parser("diagnostics", help="Run upper-bound and attribution diagnostics.")
     diagnostics_subparsers = diagnostics_parser.add_subparsers(dest="diagnostics_command")
@@ -528,6 +577,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     device=args.device,
                     swanlab_project=None if args.disable_swanlab else args.swanlab_project,
                     swanlab_run_name=args.swanlab_run_name,
+                    enable_exact_first_retrieval=args.enable_exact_first_retrieval,
+                    use_m4_candidate_prior=not args.disable_m4_candidate_prior,
                 )
             else:
                 output_root = args.output_root or paths.run_root / "m4_query_to_code" / "capabilityrq" / args.target
@@ -768,6 +819,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             summary = train_reranker(
                 data_root=data_root,
                 output_root=output_root,
+                model_kind=args.model_kind,
                 epochs=args.epochs,
                 batch_size=args.batch_size,
                 learning_rate=args.learning_rate,
@@ -777,6 +829,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 role_weight=args.role_weight,
                 stage_weight=args.stage_weight,
                 order_weight=args.order_weight,
+                code_consistency_weight=args.code_consistency_weight,
+                schema_weight=args.schema_weight,
+                coverage_gain_weight=args.coverage_gain_weight,
+                prompt_usefulness_weight=args.prompt_usefulness_weight,
                 device=args.device,
                 swanlab_project=None if args.disable_swanlab else args.swanlab_project,
                 swanlab_run_name=args.swanlab_run_name,
@@ -819,6 +875,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 m4_data_root=m4_data_root,
                 checkpoint_root=args.checkpoint_root,
                 output_root=output_root,
+                model_kind=args.model_kind,
                 top_k=args.top_k,
                 device=args.device,
                 swanlab_project=None if args.disable_swanlab else args.swanlab_project,
@@ -848,6 +905,57 @@ def main(argv: Sequence[str] | None = None) -> int:
                 output_path=args.output_path,
                 top_ks=_parse_top_k(args.top_k),
                 set_metric_name=args.set_metric_name,
+            )
+            print(json.dumps(metrics, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+
+    if args.command == "prompt":
+        if args.prompt_command == "build":
+            summary = build_code_guided_prompts(
+                prediction_path=args.prediction_path,
+                m5_prediction_path=args.m5_prediction_path,
+                output_root=args.output_root,
+                top_tools_per_step=args.top_tools_per_step,
+                max_steps=args.max_steps,
+                include_scores=not args.hide_scores,
+            )
+            print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+
+    if args.command == "agent-sim":
+        if args.agent_sim_command == "mock":
+            summary = simulate_mock_tool_calls(
+                prompt_record_path=args.prompt_record_path,
+                output_root=args.output_root,
+                max_calls=args.max_calls,
+                tools_per_step=args.tools_per_step,
+            )
+            print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+        if args.agent_sim_command == "vllm":
+            summary = run_vllm_tool_call_planning(
+                prompt_record_path=args.prompt_record_path,
+                output_root=args.output_root,
+                model=args.model,
+                tensor_parallel_size=args.tensor_parallel_size,
+                dtype=args.dtype,
+                gpu_memory_utilization=args.gpu_memory_utilization,
+                max_model_len=args.max_model_len,
+                trust_remote_code=args.trust_remote_code,
+                temperature=args.temperature,
+                top_p=args.top_p,
+                max_tokens=args.max_tokens,
+                batch_size=args.batch_size,
+                limit=args.limit,
+                seed=args.seed,
+            )
+            print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+        if args.agent_sim_command == "evaluate":
+            metrics = evaluate_tool_call_plans(
+                plan_path=args.plan_path,
+                output_path=args.output_path,
+                top_ks=_parse_top_k(args.top_k),
             )
             print(json.dumps(metrics, ensure_ascii=False, indent=2, sort_keys=True))
             return 0

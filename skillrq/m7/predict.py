@@ -16,7 +16,7 @@ from .features import (
     normalize_role,
     support_evidence,
 )
-from .model import build_reranker_model
+from .model import build_code_aware_reranker_model, build_reranker_model
 from ..m4.swanlab_utils import SwanLabLogger
 from ..m4.torch_utils import require_torch
 from ..utils.io import read_jsonl, write_json, write_jsonl
@@ -30,6 +30,7 @@ def predict_reranked_capabilities(
     m4_data_root: Path,
     checkpoint_root: Path,
     output_root: Path,
+    model_kind: str | None = None,
     top_k: int = 100,
     device: str | None = None,
     swanlab_project: str | None = "SkillRQ-M7",
@@ -37,7 +38,9 @@ def predict_reranked_capabilities(
 ) -> Mapping[str, Any]:
     torch = require_torch()
     output_root.mkdir(parents=True, exist_ok=True)
-    model, vocab, roles, stages = _load_model(checkpoint_root, device, torch)
+    model, vocab, roles, stages, loaded_model_kind = _load_model(checkpoint_root, device, torch)
+    if model_kind is not None and model_kind != loaded_model_kind:
+        raise ValueError(f"Requested M7 model_kind={model_kind}, but checkpoint contains model_kind={loaded_model_kind}")
     candidates = {str(row["candidate_id"]): row for row in read_jsonl(m4_data_root / "candidates.jsonl")}
     query_metadata = {str(row["query_id"]): row for row in read_jsonl(m4_data_root / "queries.jsonl")}
     prediction_rows = list(read_jsonl(prediction_path))
@@ -49,6 +52,7 @@ def predict_reranked_capabilities(
             "prediction_path": str(prediction_path),
             "m4_data_root": str(m4_data_root),
             "checkpoint_root": str(checkpoint_root),
+            "model_kind": loaded_model_kind,
             "top_k": top_k,
             "query_count": len(prediction_rows),
         },
@@ -78,12 +82,15 @@ def predict_reranked_capabilities(
                 duplicate=False,
                 hypergraph_support_score=float(item.get("hypergraph_support_score") or 0.0),
             )
-            outputs = _score_candidate(model, vocab, query_text, candidate, features, roles, stages, next(model.parameters()).device, torch)
+            outputs = _score_candidate(model, vocab, query_text, candidate, features, roles, stages, next(model.parameters()).device, torch, loaded_model_kind)
             final_score = (
                 outputs["relevance_score"]
                 + 0.15 * features["code_match_score"]
                 + 0.10 * features["coverage_gain_score"]
                 + 0.05 * outputs["order_score"]
+                + 0.20 * outputs.get("prompt_usefulness_score", 0.0)
+                + 0.10 * outputs.get("code_path_consistency_score", 0.0)
+                + 0.10 * outputs.get("schema_compatibility_score", 0.0)
                 - 0.10 * features["generic_penalty"]
                 - 0.25 * features["constraint_violation_penalty"]
             )
@@ -97,6 +104,11 @@ def predict_reranked_capabilities(
                     "suggested_role": outputs["role"],
                     "execution_stage": outputs["stage"],
                     "relevance_score": outputs["relevance_score"],
+                    "code_path_consistency_score": outputs.get("code_path_consistency_score"),
+                    "role_suitability_score": outputs.get("role_suitability_score"),
+                    "schema_compatibility_score": outputs.get("schema_compatibility_score"),
+                    "coverage_gain_score": outputs.get("coverage_gain_score"),
+                    "prompt_usefulness_score": outputs.get("prompt_usefulness_score"),
                     "optional_order_score": outputs["order_score"],
                     "final_score": final_score,
                     "features": features,
@@ -126,6 +138,7 @@ def predict_reranked_capabilities(
         "prediction_path": str(prediction_path),
         "m4_data_root": str(m4_data_root),
         "checkpoint_root": str(checkpoint_root),
+        "model_kind": loaded_model_kind,
         "output_root": str(output_root),
         "queries": len(output_rows),
         "top_k": top_k,
@@ -152,7 +165,9 @@ def _load_model(checkpoint_root: Path, device: str | None, torch):
     config = checkpoint["config"]
     roles = list(config["roles"])
     stages = list(config["stages"])
-    model = build_reranker_model(
+    model_kind = str(config.get("model_kind") or "standard")
+    builder = build_code_aware_reranker_model if model_kind == "code-aware" else build_reranker_model
+    model = builder(
         vocab_size=config["vocab_size"],
         feature_dim=config["feature_dim"],
         role_count=config["role_count"],
@@ -164,11 +179,11 @@ def _load_model(checkpoint_root: Path, device: str | None, torch):
     resolved_device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
     model.to(resolved_device)
     model.eval()
-    return model, vocab, roles, stages
+    return model, vocab, roles, stages, model_kind
 
 
-def _score_candidate(model, vocab, query, candidate, features, roles, stages, device, torch) -> Mapping[str, Any]:
-    text = f"{query} {candidate.get('name') or ''} {candidate.get('text') or ''}"
+def _score_candidate(model, vocab, query, candidate, features, roles, stages, device, torch, model_kind: str = "standard") -> Mapping[str, Any]:
+    text = _text_for_model(query, candidate, features, model_kind)
     token_ids = [vocab.get(token, vocab.get("<unk>", 1)) for token in _tokens(text)] or [vocab.get("<unk>", 1)]
     with torch.no_grad():
         outputs = model(
@@ -180,11 +195,26 @@ def _score_candidate(model, vocab, query, candidate, features, roles, stages, de
         order_score = float(torch.sigmoid(outputs["order"])[0].detach().cpu())
         role = roles[int(outputs["role"].argmax(dim=-1)[0].detach().cpu())]
         stage = stages[int(outputs["stage"].argmax(dim=-1)[0].detach().cpu())]
+        code_consistency = _optional_sigmoid(outputs, "code_consistency", torch)
+        schema_compatibility = _optional_sigmoid(outputs, "schema_compatibility", torch)
+        coverage_gain = _optional_sigmoid(outputs, "coverage_gain", torch)
+        prompt_usefulness = _optional_sigmoid(outputs, "prompt_usefulness", torch)
     if role == "UNKNOWN":
         role = normalize_role(candidate.get("role_hint"))
     if stage == "UNKNOWN":
         stage = infer_stage(role, None, None)
-    return {"relevance_score": relevance_score, "order_score": order_score, "role": role, "stage": stage}
+    role_suitability = features.get("role_compatibility_score", 0.0)
+    return {
+        "relevance_score": relevance_score,
+        "code_path_consistency_score": code_consistency,
+        "role_suitability_score": role_suitability,
+        "schema_compatibility_score": schema_compatibility,
+        "coverage_gain_score": coverage_gain,
+        "prompt_usefulness_score": prompt_usefulness,
+        "order_score": order_score,
+        "role": role,
+        "stage": stage,
+    }
 
 
 def _flatten_prediction_candidates(row: Mapping[str, Any]) -> list[Mapping[str, Any]]:
@@ -198,6 +228,7 @@ def _flatten_prediction_candidates(row: Mapping[str, Any]) -> list[Mapping[str, 
                         "step_index": path.get("step_index"),
                         "predicted_coverage_gain": path.get("predicted_coverage_gain"),
                         "codes": path.get("codes"),
+                        "role_hint": candidate.get("role_hint") or path.get("role_hint"),
                     }
                 )
         return rows
@@ -220,3 +251,47 @@ def _predict_order(rows: Sequence[Mapping[str, Any]]) -> list[str]:
 
 def _tokens(text: str) -> list[str]:
     return [token.lower() for token in TOKEN_RE.findall(text or "") if token]
+
+
+def _optional_sigmoid(outputs, key: str, torch) -> float:
+    if key not in outputs:
+        return 0.0
+    return float(torch.sigmoid(outputs[key])[0].detach().cpu())
+
+
+def _code_aware_text(query: str, candidate: Mapping[str, Any], features: Mapping[str, Any]) -> str:
+    predicted_code_path = " ".join(str(item) for item in candidate.get("codes") or candidate.get("matched_code_path") or [])
+    native_code_path = " ".join(str(item) for item in candidate.get("code_path") or [])
+    schema = str(candidate.get("code_explanation") or candidate.get("capability_text_evidence") or "")[:600]
+    coverage_state = f"coverage_gain {features.get('coverage_gain_score', 0.0)} matched_levels {features.get('matched_levels', 0.0)}"
+    return " ".join(
+        [
+            "[User Query]",
+            query,
+            "[Predicted Code Path]",
+            predicted_code_path,
+            "[Code Path Explanation]",
+            schema,
+            "[Candidate Tool/API]",
+            str(candidate.get("name") or ""),
+            str(candidate.get("text") or candidate.get("capability_text_evidence") or ""),
+            "[Candidate Schema]",
+            schema,
+            "[Candidate Native Code Path]",
+            native_code_path,
+            "[Role Requirement]",
+            str(candidate.get("role_hint") or ""),
+            "[Coverage State]",
+            coverage_state,
+        ]
+    )
+
+
+def _standard_text(query: str, candidate: Mapping[str, Any]) -> str:
+    return f"{query} {candidate.get('name') or ''} {candidate.get('text') or candidate.get('capability_text_evidence') or ''}"
+
+
+def _text_for_model(query: str, candidate: Mapping[str, Any], features: Mapping[str, Any], model_kind: str) -> str:
+    if model_kind == "code-aware":
+        return _code_aware_text(query, candidate, features)
+    return _standard_text(query, candidate)

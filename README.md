@@ -661,6 +661,24 @@ python3 -m skillrq m5 evaluate \
   --set-metric-name tool_set_recall
 ```
 
+M5 evaluate 偏低时，先运行 phase 0 诊断脚本确认断点位置：
+
+```bash
+python3 scripts/diagnose_m5_nested_candidates.py \
+  --prediction-path runs/m5_code_path_planner/predictions/capability_sequence_eval/predictions.jsonl \
+  --output-path reports/tables/m5_nested_candidates_diagnostic.json
+
+python3 scripts/diagnose_m5_codepath_to_candidate.py \
+  --prediction-path runs/m5_code_path_planner/predictions/capability_sequence_eval/predictions.jsonl \
+  --m4-data-root data/processed/m4_sequence_eval/capability \
+  --output-path reports/tables/m5_codepath_to_candidate_diagnostic.json
+
+python3 scripts/diagnose_m4_m5_candidate_reuse.py \
+  --m4-prediction-path runs/m4_query_to_code/predictions/soft_multipath/capability_sequence_eval/predictions.jsonl \
+  --m5-prediction-path runs/m5_code_path_planner/predictions/capability_sequence_eval/predictions.jsonl \
+  --output-path reports/tables/m4_m5_candidate_reuse_diagnostic.json
+```
+
 M5 主要输出：
 
 ```text
@@ -675,6 +693,31 @@ reports/tables/m5_coverage_supervision_capability.json
 SwanLab 会记录每个 epoch 的 `train/loss`、`train/code_loss`、`train/coverage_loss`、`dev/loss`、`dev/code_loss`、`dev/coverage_loss`、`dev/l1_accuracy`、`dev/l2_accuracy`、`dev/l3_accuracy`、`dev/l4_accuracy`、`dev/path_exact_match`，以及推理阶段的 `predict/queries`、`predict/avg_steps`。
 
 `code-plan` 分支额外记录 `train/role_loss`、`train/stop_loss`、`dev/role_accuracy`、`dev/stop_accuracy`，用于观察 role planning 和 learned stopping 是否有效。
+
+Phase 2 之后，`m5 predict --model-kind code-plan` 会复用 M4 soft multi-path 输出中的 `retrieved_capabilities`。推理 summary 与 SwanLab 会额外记录 `m4_candidate_reuse_rate`、`m4_hit_rate`、`m5_hit_rate`、`m4_hit_m5_miss_rate` 和 `m4_miss_m5_hit_rate`，用于判断 M5 是否仍在丢弃 M4 已召回的 gold candidates。
+
+为提高 M5 predict 速度，code-plan 分支会在启动时构建 candidate retrieval index：`exact_path -> candidates`、`L1/L2/L3 prefix -> candidates`、`L1/L2 prefix -> candidates` 和 `candidate_id -> candidate`。推理时 `_retrieve_for_path()` 只访问相关 bucket 并合并 M4 candidates，不再每个 step 遍历全量 candidate 库。
+
+如果要启用 Phase 1 的 exact-first bucket retrieval：
+
+```bash
+python3 -m skillrq m5 predict \
+  --target capability \
+  --model-kind code-plan \
+  --m4-data-root data/processed/m4_sequence_eval/capability \
+  --m4-prediction-path runs/m4_query_to_code/predictions/soft_multipath/capability_sequence_eval/predictions.jsonl \
+  --checkpoint-root runs/m5_code_path_planner/capability_sequence_eval \
+  --output-root runs/m5_code_path_planner/predictions/capability_sequence_eval_exact_first_m4_prior \
+  --max-steps 6 \
+  --top-n-paths 16 \
+  --candidates-per-step 20 \
+  --stop-threshold 0.55 \
+  --split sequence_test \
+  --enable-exact-first-retrieval \
+  --device cuda
+```
+
+若要做 Phase 1 only 消融，可额外加 `--disable-m4-candidate-prior`。
 
 ### 9. 准备并训练 M7 Role-Aware and Sequence-Aware Reranker
 
@@ -755,6 +798,31 @@ python3 -m skillrq m7 train \
   --device cuda \
   --swanlab-project SkillRQ-M7 \
   --swanlab-run-name m7-capability-sequence-eval
+```
+
+训练 Code-Aware M7 reranker。该分支会使用结构化输入块 `[User Query]`、`[Predicted Code Path]`、`[Code Path Explanation]`、`[Candidate Tool/API]`、`[Candidate Schema]`、`[Candidate Native Code Path]`、`[Role Requirement]` 和 `[Coverage State]`，并额外学习 code consistency、schema compatibility、coverage gain 和 prompt usefulness：
+
+```bash
+python3 -m skillrq m7 train \
+  --target capability \
+  --model-kind code-aware \
+  --data-root data/processed/m7_sequence_eval/capability \
+  --output-root runs/m7_code_aware_reranker/capability_sequence_eval \
+  --epochs 10 \
+  --batch-size 2048 \
+  --learning-rate 3e-4 \
+  --embedding-dim 512 \
+  --hidden-dim 1024 \
+  --role-weight 0.2 \
+  --stage-weight 0.2 \
+  --order-weight 0.2 \
+  --code-consistency-weight 0.3 \
+  --schema-weight 0.2 \
+  --coverage-gain-weight 0.2 \
+  --prompt-usefulness-weight 0.3 \
+  --device cuda \
+  --swanlab-project SkillRQ-M7 \
+  --swanlab-run-name m7-code-aware-capability-sequence-eval
 ```
 
 训练 skill-level reranker：
@@ -868,6 +936,22 @@ python3 -m skillrq m7 predict \
   --swanlab-run-name m7-capability-predict
 ```
 
+使用 Code-Aware M7 对 Phase 2 M5 predictions 进行 reranking：
+
+```bash
+python3 -m skillrq m7 predict \
+  --target capability \
+  --model-kind code-aware \
+  --m4-data-root data/processed/m4_sequence_eval/capability \
+  --prediction-path runs/m5_code_path_planner/predictions/capability_sequence_eval_m4_prior/predictions.jsonl \
+  --checkpoint-root runs/m7_code_aware_reranker/capability_sequence_eval \
+  --output-root runs/m7_code_aware_reranker/predictions/capability_sequence_eval_m4_prior \
+  --top-k 100 \
+  --device cuda \
+  --swanlab-project SkillRQ-M7 \
+  --swanlab-run-name m7-code-aware-capability-predict
+```
+
 使用 joint 模型对 M5 capability predictions 进行 reranking：
 
 ```bash
@@ -934,9 +1018,124 @@ runs/m7_joint_reranker/
 reports/tables/m7_tool_reranking.json
 ```
 
-SwanLab 会记录每个 epoch 的 `train/loss`、`train/relevance_loss`、`train/role_loss`、`train/stage_loss`、`train/order_loss`、`dev/relevance_accuracy`、`dev/role_accuracy`、`dev/stage_accuracy`、`dev/order_mse`，以及推理阶段的 `predict/queries`、`predict/top_k`、`predict/avg_reranked_candidates`。`m7 joint-train` 还会额外记录 `train/code_loss`、`train/soft_code_loss` 和 `dev/code_path_exact_match`。
+SwanLab 会记录每个 epoch 的 `train/loss`、`train/relevance_loss`、`train/role_loss`、`train/stage_loss`、`train/order_loss`、`dev/relevance_accuracy`、`dev/role_accuracy`、`dev/stage_accuracy`、`dev/order_mse`，以及推理阶段的 `predict/queries`、`predict/top_k`、`predict/avg_reranked_candidates`。`m7 train --model-kind code-aware` 会额外记录 `train/code_consistency_loss`、`train/schema_loss`、`train/coverage_gain_loss`、`train/prompt_usefulness_loss`、`dev/code_consistency_mse`、`dev/schema_compatibility_mse`、`dev/coverage_gain_mse` 和 `dev/prompt_usefulness_mse`。`m7 joint-train` 还会额外记录 `train/code_loss`、`train/soft_code_loss` 和 `dev/code_path_exact_match`。
 
-### 10. 运行诊断实验与上界分析
+### 10. 构建 Code-Path-Guided LLM Prompt
+
+Prompt construction 是正式模块，用于把 retrieval / reranking 结果转化为 LLM agent planner 可直接使用的 code-structured planning support，而不是 flat top-k tool list。
+
+使用 Code-Aware M7 reranking 结果和对应 M5 code plan 构建 prompt：
+
+```bash
+python3 -m skillrq prompt build \
+  --prediction-path runs/m7_code_aware_reranker/predictions/capability_sequence_eval_m4_prior/reranked_predictions.jsonl \
+  --m5-prediction-path runs/m5_code_path_planner/predictions/capability_sequence_eval_m4_prior/predictions.jsonl \
+  --output-root runs/prompt_construction/capability_sequence_eval_m4_prior \
+  --top-tools-per-step 3 \
+  --max-steps 6
+```
+
+输出：
+
+```text
+runs/prompt_construction/capability_sequence_eval_m4_prior/
+├── prompt_records.jsonl
+├── prompts.md
+└── prompt_summary.json
+```
+
+每条 prompt 会包含：
+
+```text
+User Query
+Capability Plan
+Step role / operation
+Required capability code path
+Candidate tools
+Why needed
+Planner Instruction
+```
+
+### 11. Mock Tool-Use Simulation
+
+先用 mock simulator 跑通 tool call plan 生成与评估链路。该模式不调用真实 LLM，不会访问外部 API，只从 prompt 中给出的 candidate tools 里按 capability step 顺序选择工具，因此可作为 prompt schema / parser / evaluator 的 sanity check。
+
+生成 mock tool-call plans：
+
+```bash
+python3 -m skillrq agent-sim mock \
+  --prompt-record-path runs/prompt_construction/capability_sequence_eval_m4_prior/prompt_records.jsonl \
+  --output-root runs/agent_sim/mock/capability_sequence_eval_m4_prior \
+  --max-calls 6 \
+  --tools-per-step 1
+```
+
+评估 mock plans：
+
+```bash
+python3 -m skillrq agent-sim evaluate \
+  --plan-path runs/agent_sim/mock/capability_sequence_eval_m4_prior/tool_call_plans.jsonl \
+  --output-path reports/tables/agent_sim_mock_capability_sequence_eval_m4_prior.json \
+  --top-k 1,3,5,10
+```
+
+指标包括：
+
+```text
+tool_set_recall@K
+completeness@K
+first_tool_accuracy
+transition_accuracy
+invalid_tool_rate
+prompt_grounding_rate
+avg_tool_calls
+```
+
+真实 LLM tool call plan 推理建议作为下一步接入 `skillrq/agent_sim/`，优先支持 vLLM batch inference。推荐输出仍保持同一 JSON schema：`tool_call_plans.jsonl`，这样可以复用当前 evaluator。
+
+使用 vLLM 进行真实 LLM tool-call plan 推理：
+
+```bash
+python3 -m skillrq agent-sim vllm \
+  --prompt-record-path runs/prompt_construction/capability_sequence_eval_m4_prior/prompt_records.jsonl \
+  --output-root runs/agent_sim/vllm/capability_sequence_eval_m4_prior \
+  --model Qwen/Qwen2.5-7B-Instruct \
+  --tensor-parallel-size 1 \
+  --dtype auto \
+  --gpu-memory-utilization 0.90 \
+  --temperature 0.0 \
+  --top-p 1.0 \
+  --max-tokens 512 \
+  --batch-size 32
+```
+
+如果模型需要自定义代码，可加：
+
+```bash
+--trust-remote-code
+```
+
+评估 vLLM 生成的 tool-call plans：
+
+```bash
+python3 -m skillrq agent-sim evaluate \
+  --plan-path runs/agent_sim/vllm/capability_sequence_eval_m4_prior/tool_call_plans.jsonl \
+  --output-path reports/tables/agent_sim_vllm_capability_sequence_eval_m4_prior.json \
+  --top-k 1,3,5,10
+```
+
+vLLM 输出：
+
+```text
+runs/agent_sim/vllm/capability_sequence_eval_m4_prior/
+├── tool_call_plans.jsonl
+├── raw_generations.jsonl
+└── vllm_summary.json
+```
+
+`raw_generations.jsonl` 会保留原始 LLM 输出，方便分析 JSON 解析失败、工具幻觉和 prompt grounding 问题。
+
+### 12. 运行诊断实验与上界分析
 
 下载服务器 `runs/` 和 `reports/` 后，在本地运行：
 
@@ -963,7 +1162,7 @@ reports/diagnostics/capability/diagnostics_summary.json
 
 这些报告用于判断 first-stage candidate pool 上界、codebook 质量、multi-positive 分布、hard negative 难度与 sequence 评估链路。
 
-### 11. 运行测试
+### 13. 运行测试
 
 ```bash
 /opt/homebrew/anaconda3/bin/pytest
@@ -983,7 +1182,9 @@ reports/diagnostics/capability/diagnostics_summary.json
 - M3: CapabilityRQ Codebook v1，包括四层 semantic code path、code quality、code assignments 与 code cards。
 - M4: Query-to-Code Latent Capability Decomposition，包括 PyTorch query-to-code 训练代码、RQ-KMeans/RQ-VAE 对照入口、预测与评估脚本。
 - M5: Residual Multi-Code Path Selector with Coverage Supervision，包括 residual coverage 数据构造、PyTorch selector 训练、逐步推理、coverage metrics 与 SwanLab 记录。
-- M7: Role-Aware and Sequence-Aware Reranker，包括 reranker 数据构造、PyTorch relevance/role/stage/order 多任务训练、M4/M5 候选池重排、tool order 预测、retrieval/sequence metrics、joint ablation 的 shared encoder / soft code distribution 可选分支与 SwanLab 记录。
+- M7: Role-Aware and Sequence-Aware Reranker，包括 reranker 数据构造、PyTorch relevance/role/stage/order 多任务训练、Code-Aware Reranker、M4/M5 候选池重排、tool order 预测、retrieval/sequence metrics、joint ablation 的 shared encoder / soft code distribution 可选分支与 SwanLab 记录。
+- Prompt Construction: code-path-guided LLM prompt construction，将 M5 code plan 与 M7 reranked capabilities 转换为 agent planning prompt。
+- Agent Simulation: mock tool-use simulation + evaluation，用于验证 prompt-grounded tool selection、tool order 和 hallucination/grounding。
 - Diagnostics: 候选池 oracle 上界、codebook 混杂度、multi-positive 分布、negative sampling 难度与 sequence 评估链路诊断。
 - M6: Granularity-Aware Hypergraph Expansion 按当前计划先跳过，作为后续 optional branch。
 - LLM query span decomposition + segment retrieval 当前按计划保留为后续可选项。

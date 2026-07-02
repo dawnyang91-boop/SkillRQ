@@ -145,6 +145,8 @@ def _make_example(
         "candidate_id": candidate["candidate_id"],
         "candidate_name": candidate.get("name"),
         "candidate_text": candidate.get("text"),
+        "code_explanation": candidate.get("code_explanation"),
+        "candidate_schema": _candidate_schema_text(candidate),
         "semantic_id": candidate.get("semantic_id"),
         "code_path": candidate.get("code_path") or [],
         "matched_code_path": candidate.get("code_path") or [],
@@ -205,3 +207,16 @@ def _dedupe(values: list[str]) -> list[str]:
         seen.add(value)
         rows.append(value)
     return rows
+
+
+def _candidate_schema_text(candidate: Mapping[str, Any]) -> str:
+    metadata = candidate.get("metadata") or {}
+    labels = candidate.get("labels") or {}
+    pieces = [
+        metadata.get("api_schema"),
+        metadata.get("parameters"),
+        metadata.get("input_schema"),
+        metadata.get("output_schema"),
+        labels.get("l4") if isinstance(labels, Mapping) else None,
+    ]
+    return " ".join(str(item) for item in pieces if item)

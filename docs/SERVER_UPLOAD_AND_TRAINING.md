@@ -1,6 +1,6 @@
 # SkillRQ 服务器上传与训练指南
 
-本文档用于把本地 `/Users/sihan/code/SkillRQ` 迁移到新的 GPU 服务器，并在服务器上执行 M4 / M5 / M7 训练、推理与评估。
+本文档用于把本地 `/Users/sihan/code/SkillRQ` 迁移到新的 GPU 服务器，并在服务器上执行 M4 / M5 / M7 训练、推理、prompt construction、agent simulation 与评估。
 
 当前建议：**不要上传 raw datasets**，直接上传已经生成好的 `data/processed` 训练视图。服务器主要负责 PyTorch 训练和推理。
 
@@ -23,6 +23,8 @@ tests/              # 可选，但建议上传，用于服务器 smoke test
 说明：
 
 * `skillrq/` 是核心 Python package。
+  * `skillrq/prompting/` 负责 code-path-guided LLM prompt construction。
+  * `skillrq/agent_sim/` 负责 mock / vLLM tool-call plan simulation 与 evaluation。
 * `scripts/run_m7_joint_ablations.sh` 已包含四组 M7 joint 消融训练。
 * `docs/` 不是训练必需，但建议上传，方便服务器端查看命令。
 * 上传前确认 `skillrq/m7/joint_model.py` 中存在 `MeanTextEncoder` 与 `token_ids.clamp(...)`，这是修复 CUDA embedding 越界的关键代码。
@@ -49,6 +51,16 @@ data/processed/m7/capability/stats.json
 data/processed/m4/capability/candidates.jsonl
 data/processed/m4/capability/queries.jsonl
 runs/m5_residual_selector/predictions/capability/predictions.jsonl   # 训练完 M5 predict 后才会有
+```
+
+如果要运行 Code-Aware M7、Prompt Construction 和 Agent Simulation，建议保留以下运行产物：
+
+```text
+runs/m4_query_to_code/predictions/soft_multipath/capability_sequence_eval/predictions.jsonl
+runs/m5_code_path_planner/predictions/capability_sequence_eval_m4_prior/predictions.jsonl
+runs/m7_code_aware_reranker/capability_sequence_eval/
+runs/m7_code_aware_reranker/predictions/capability_sequence_eval_m4_prior/
+runs/prompt_construction/capability_sequence_eval_m4_prior/
 ```
 
 如果要训练 M5：
@@ -96,10 +108,9 @@ reports/              # 除非需要迁移已有报告
 以下命令在本地执行。
 
 先设置服务器变量：
-
 ```bash
-export SERVER_PORT=33530
-export SERVER_HOST=root@i-1.gpushare.com
+export SERVER_PORT=25833
+export SERVER_HOST=root@i-2.gpushare.com
 export SERVER_DIR=/hy-tmp
 ```
 
@@ -162,6 +173,36 @@ rsync -av \
   "${SERVER_HOST}:${SERVER_DIR}/data/processed/m4/capability/"
 ```
 
+### 2.4 增量上传当前新增模块
+
+如果服务器上已有项目，只同步最新 CLI、M5/M7、prompting 和 agent simulation 代码：
+
+```bash
+scp -P "$SERVER_PORT" /Users/sihan/code/SkillRQ/skillrq/cli.py \
+  "$SERVER_HOST:$SERVER_DIR/skillrq/cli.py"
+
+scp -P "$SERVER_PORT" /Users/sihan/code/SkillRQ/skillrq/m5/planning.py \
+  "$SERVER_HOST:$SERVER_DIR/skillrq/m5/planning.py"
+
+scp -P "$SERVER_PORT" /Users/sihan/code/SkillRQ/skillrq/m7/data.py \
+  "$SERVER_HOST:$SERVER_DIR/skillrq/m7/data.py"
+
+scp -P "$SERVER_PORT" /Users/sihan/code/SkillRQ/skillrq/m7/model.py \
+  "$SERVER_HOST:$SERVER_DIR/skillrq/m7/model.py"
+
+scp -P "$SERVER_PORT" /Users/sihan/code/SkillRQ/skillrq/m7/train.py \
+  "$SERVER_HOST:$SERVER_DIR/skillrq/m7/train.py"
+
+scp -P "$SERVER_PORT" /Users/sihan/code/SkillRQ/skillrq/m7/predict.py \
+  "$SERVER_HOST:$SERVER_DIR/skillrq/m7/predict.py"
+
+scp -P "$SERVER_PORT" -r /Users/sihan/code/SkillRQ/skillrq/prompting \
+  "$SERVER_HOST:$SERVER_DIR/skillrq/prompting"
+
+scp -P "$SERVER_PORT" -r /Users/sihan/code/SkillRQ/skillrq/agent_sim \
+  "$SERVER_HOST:$SERVER_DIR/skillrq/agent_sim"
+```
+
 ---
 
 ## 3. 服务器环境初始化
@@ -169,7 +210,7 @@ rsync -av \
 以下命令在服务器执行。
 
 ```bash
-cd /root/autodl-tmp/SkillRQ
+cd /hy-tmp
 uv venv --python 3.11
 source .venv/bin/activate
 uv pip install -e .
@@ -182,6 +223,13 @@ uv pip install swanlab
 
 ```bash
 uv pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu128
+```
+
+如果需要运行真实 LLM / vLLM tool-call plan 推理，额外安装：
+
+```bash
+uv pip install -U vllm
+python -c "import vllm; print(vllm.__version__)"
 ```
 
 验证 GPU：
@@ -202,6 +250,8 @@ PY
 ```bash
 python3 -m skillrq --help
 python3 -m skillrq m7 joint-train --help
+python3 -m skillrq prompt build --help
+python3 -m skillrq agent-sim vllm --help
 ```
 
 验证关键补丁是否已同步：
@@ -266,7 +316,7 @@ M7 rerank_examples: train=2,379,907 sequence_dev=15,174 sequence_test=37,333 tes
 ### 4.1 M4 Query-to-Code 训练
 
 ```bash
-cd /hy-tmp/SkillRQ
+cd /hy-tmp
 source .venv/bin/activate
 
 python3 -m skillrq m4 train \
@@ -536,7 +586,7 @@ python3 -m skillrq m5 predict \
   --m4-data-root data/processed/m4_sequence_eval/capability \
   --m4-prediction-path runs/m4_query_to_code/predictions/soft_multipath/capability_sequence_eval/predictions.jsonl \
   --checkpoint-root runs/m5_code_path_planner/capability_sequence_eval \
-  --output-root runs/m5_code_path_planner/predictions/capability_sequence_eval \
+  --output-root runs/m5_code_path_planner/predictions/capability_sequence_eval_m4_prior \
   --max-steps 6 \
   --top-n-paths 16 \
   --candidates-per-step 20 \
@@ -547,6 +597,38 @@ python3 -m skillrq m5 predict \
   --swanlab-run-name m5-code-path-plan-sequence-test
 ```
 
+说明：
+
+* `code-plan` 推理会复用 M4 soft multi-path 输出中的 `retrieved_capabilities`，并记录 `m4_candidate_reuse_rate`、`m4_hit_rate`、`m5_hit_rate`、`m4_hit_m5_miss_rate`。
+* 推理时会构建 candidate retrieval index，避免每个 step 遍历全量 candidates。
+
+如果要启用 Phase 1 的 exact-first bucket retrieval 消融：
+
+```bash
+python3 -m skillrq m5 predict \
+  --target capability \
+  --model-kind code-plan \
+  --m4-data-root data/processed/m4_sequence_eval/capability \
+  --m4-prediction-path runs/m4_query_to_code/predictions/soft_multipath/capability_sequence_eval/predictions.jsonl \
+  --checkpoint-root runs/m5_code_path_planner/capability_sequence_eval \
+  --output-root runs/m5_code_path_planner/predictions/capability_sequence_eval_exact_first_m4_prior \
+  --max-steps 6 \
+  --top-n-paths 16 \
+  --candidates-per-step 20 \
+  --stop-threshold 0.55 \
+  --split sequence_test \
+  --enable-exact-first-retrieval \
+  --device cuda \
+  --swanlab-project SkillRQ-M5 \
+  --swanlab-run-name m5-code-path-plan-exact-first-m4-prior
+```
+
+若要做 Phase 1 only 消融，可额外加：
+
+```bash
+--disable-m4-candidate-prior
+```
+
 M5 评估：
 
 ```bash
@@ -555,6 +637,34 @@ python3 -m skillrq m5 evaluate \
   --output-path reports/tables/m5_coverage_supervision_capability.json \
   --top-k 5,10,20,50,100 \
   --set-metric-name tool_set_recall
+```
+
+新版 code path planner 评估：
+
+```bash
+python3 -m skillrq m5 evaluate \
+  --prediction-path runs/m5_code_path_planner/predictions/capability_sequence_eval_m4_prior/predictions.jsonl \
+  --output-path reports/tables/m5_code_plan_m4_prior_sequence_test.json \
+  --top-k 5,10,20,50,100 \
+  --set-metric-name tool_set_recall
+```
+
+M5 evaluate 偏低时，先运行 Phase 0 诊断：
+
+```bash
+python3 scripts/diagnose_m5_nested_candidates.py \
+  --prediction-path runs/m5_code_path_planner/predictions/capability_sequence_eval_m4_prior/predictions.jsonl \
+  --output-path reports/tables/m5_nested_candidates_diagnostic.json
+
+python3 scripts/diagnose_m5_codepath_to_candidate.py \
+  --prediction-path runs/m5_code_path_planner/predictions/capability_sequence_eval_m4_prior/predictions.jsonl \
+  --m4-data-root data/processed/m4_sequence_eval/capability \
+  --output-path reports/tables/m5_codepath_to_candidate_diagnostic.json
+
+python3 scripts/diagnose_m4_m5_candidate_reuse.py \
+  --m4-prediction-path runs/m4_query_to_code/predictions/soft_multipath/capability_sequence_eval/predictions.jsonl \
+  --m5-prediction-path runs/m5_code_path_planner/predictions/capability_sequence_eval_m4_prior/predictions.jsonl \
+  --output-path reports/tables/m4_m5_candidate_reuse_diagnostic.json
 ```
 
 ### 4.3 M7 Offline Reranker 训练
@@ -595,6 +705,31 @@ python3 -m skillrq m7 train \
   --swanlab-run-name m7-capability-sequence-eval
 ```
 
+Code-Aware M7 训练：
+
+```bash
+python3 -m skillrq m7 train \
+  --target capability \
+  --model-kind code-aware \
+  --data-root data/processed/m7_sequence_eval/capability \
+  --output-root runs/m7_code_aware_reranker/capability_sequence_eval \
+  --epochs 10 \
+  --batch-size 2048 \
+  --learning-rate 3e-4 \
+  --embedding-dim 512 \
+  --hidden-dim 1024 \
+  --role-weight 0.2 \
+  --stage-weight 0.2 \
+  --order-weight 0.2 \
+  --code-consistency-weight 0.3 \
+  --schema-weight 0.2 \
+  --coverage-gain-weight 0.2 \
+  --prompt-usefulness-weight 0.3 \
+  --device cuda \
+  --swanlab-project SkillRQ-M7 \
+  --swanlab-run-name m7-code-aware-capability-sequence-eval
+```
+
 M7 offline 推理，输入建议使用 M5 predictions：
 
 ```bash
@@ -607,6 +742,22 @@ python3 -m skillrq m7 predict \
   --device cuda \
   --swanlab-project SkillRQ-M7 \
   --swanlab-run-name m7-capability-predict
+```
+
+Code-Aware M7 推理，输入建议使用 M5 code-plan m4-prior predictions：
+
+```bash
+python3 -m skillrq m7 predict \
+  --target capability \
+  --model-kind code-aware \
+  --m4-data-root data/processed/m4_sequence_eval/capability \
+  --prediction-path runs/m5_code_path_planner/predictions/capability_sequence_eval_m4_prior/predictions.jsonl \
+  --checkpoint-root runs/m7_code_aware_reranker/capability_sequence_eval \
+  --output-root runs/m7_code_aware_reranker/predictions/capability_sequence_eval_m4_prior \
+  --top-k 100 \
+  --device cuda \
+  --swanlab-project SkillRQ-M7 \
+  --swanlab-run-name m7-code-aware-capability-predict
 ```
 
 M7 sequence-test 推理：
@@ -644,12 +795,105 @@ python3 -m skillrq m7 evaluate \
   --set-metric-name tool_set_recall
 ```
 
-### 4.4 M7 Joint 消融训练
+Code-Aware M7 评估：
+
+```bash
+python3 -m skillrq m7 evaluate \
+  --prediction-path runs/m7_code_aware_reranker/predictions/capability_sequence_eval_m4_prior/reranked_predictions.jsonl \
+  --output-path reports/tables/m7_code_aware_sequence_test_reranking.json \
+  --top-k 5,10,20,50,100 \
+  --set-metric-name tool_set_recall
+```
+
+### 4.4 Code-Path-Guided Prompt Construction
+
+使用 Code-Aware M7 reranking 结果和对应 M5 code plan 构建 LLM agent planning prompt：
+
+```bash
+python3 -m skillrq prompt build \
+  --prediction-path runs/m7_code_aware_reranker/predictions/capability_sequence_eval_m4_prior/reranked_predictions.jsonl \
+  --m5-prediction-path runs/m5_code_path_planner/predictions/capability_sequence_eval_m4_prior/predictions.jsonl \
+  --output-root runs/prompt_construction/capability_sequence_eval_m4_prior \
+  --top-tools-per-step 3 \
+  --max-steps 6
+```
+
+输出：
+
+```text
+runs/prompt_construction/capability_sequence_eval_m4_prior/
+├── prompt_records.jsonl
+├── prompts.md
+└── prompt_summary.json
+```
+
+### 4.5 Mock Tool-Use Simulation
+
+先用 mock simulator 跑通 prompt-grounded tool-call plan 生成和评估链路：
+
+```bash
+python3 -m skillrq agent-sim mock \
+  --prompt-record-path runs/prompt_construction/capability_sequence_eval_m4_prior/prompt_records.jsonl \
+  --output-root runs/agent_sim/mock/capability_sequence_eval_m4_prior \
+  --max-calls 6 \
+  --tools-per-step 1
+
+python3 -m skillrq agent-sim evaluate \
+  --plan-path runs/agent_sim/mock/capability_sequence_eval_m4_prior/tool_call_plans.jsonl \
+  --output-path reports/tables/agent_sim_mock_capability_sequence_eval_m4_prior.json \
+  --top-k 1,3,5,10
+```
+
+### 4.6 vLLM Tool-Use Simulation
+
+真实 LLM tool-call plan 推理使用 vLLM offline batch inference。示例：
+
+```bash
+python3 -m skillrq agent-sim vllm \
+  --prompt-record-path runs/prompt_construction/capability_sequence_eval_m4_prior/prompt_records.jsonl \
+  --output-root runs/agent_sim/vllm/capability_sequence_eval_m4_prior \
+  --model deepseek-ai/DeepSeek-V4-Flash \
+  --tensor-parallel-size 1 \
+  --dtype auto \
+  --gpu-memory-utilization 0.90 \
+  --temperature 0.0 \
+  --top-p 1.0 \
+  --max-tokens 512 \
+  --batch-size 32
+```
+
+如果模型需要自定义代码，可加：
+
+```bash
+--trust-remote-code
+```
+
+评估 vLLM 生成的 tool-call plans：
+
+```bash
+python3 -m skillrq agent-sim evaluate \
+  --plan-path runs/agent_sim/vllm/capability_sequence_eval_m4_prior/tool_call_plans.jsonl \
+  --output-path reports/tables/agent_sim_vllm_capability_sequence_eval_m4_prior.json \
+  --top-k 1,3,5,10
+```
+
+vLLM 输出：
+
+```text
+runs/agent_sim/vllm/capability_sequence_eval_m4_prior/
+├── tool_call_plans.jsonl
+├── raw_generations.jsonl
+└── vllm_summary.json
+```
+
+`raw_generations.jsonl` 会保留原始 LLM 输出，方便分析 JSON 解析失败、工具幻觉和 prompt grounding 问题。
+
+### 4.7 M7 Joint 消融训练
 
 四组消融已经写入脚本：
 
 ```bash
-cd /hy-tmp/SkillRQ
+cd /hy-tmp
 source .venv/bin/activate
 bash scripts/run_m7_joint_ablations.sh
 ```
@@ -893,12 +1137,15 @@ diagnostics_summary.json               # 总入口
 
 ```text
 1. 上传代码 + data/processed
-2. 训练 M4
+2. 训练 soft multi-path M4
 3. M4 predict/evaluate
-4. 训练 M5
-5. M5 predict/evaluate
-6. 训练 M7 offline
-7. 训练 M7 joint ablations
-8. 对 M5 predictions 做 M7 / M7 joint reranking
-9. evaluate 汇总 metrics
+4. 准备并训练 M5 code-plan
+5. M5 code-plan m4-prior predict/evaluate
+6. 训练 M7 standard / Code-Aware reranker
+7. 对 M5 code-plan predictions 做 M7 reranking/evaluate
+8. 构建 code-path-guided prompt
+9. 运行 mock agent simulation/evaluate
+10. 可选：运行 vLLM agent simulation/evaluate
+11. 可选：训练 M7 joint ablations
+12. 下载 runs/reports 并运行 diagnostics
 ```
